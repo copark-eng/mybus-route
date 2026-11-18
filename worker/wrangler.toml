@@ -4,7 +4,7 @@ compatibility_date = "2026-11-01"
 
 [vars]
 # 쉼표로 구분. 브라우저는 Origin 을 소문자로 보낸다.
-ALLOWED_ORIGINS = "http://localhost:5173,https://coparkai.github.io"
+ALLOWED_ORIGINS = "http://localhost:5173,https://copark-eng.github.io"
 
 # 비밀값은 여기 적지 말고 아래 명령으로 등록한다 (로컬은 .dev.vars):
 #   npx wrangler secret put BUS_API_KEY
