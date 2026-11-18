@@ -97,7 +97,7 @@ async function geocode(url: URL, env: Env): Promise<Response> {
   const upstream = new URL(GEOCODE_URL);
   upstream.searchParams.set("query", query);
   const res = await fetch(upstream, { headers: ncpHeaders(env) });
-  if (!res.ok) return json({ error: `geocode ${res.status}` }, 502);
+  if (!res.ok) return json({ error: `geocode ${res.status}`, detail: await upstreamDetail(res) }, 502);
   const body = (await res.json()) as any;
   return json(
     toList(body?.addresses).map((a) => ({
@@ -118,11 +118,16 @@ async function reverseGeocode(url: URL, env: Env): Promise<Response> {
   upstream.searchParams.set("orders", "roadaddr,addr");
   upstream.searchParams.set("output", "json");
   const res = await fetch(upstream, { headers: ncpHeaders(env) });
-  if (!res.ok) return json({ error: `reverse-geocode ${res.status}` }, 502);
+  if (!res.ok) return json({ error: `reverse-geocode ${res.status}`, detail: await upstreamDetail(res) }, 502);
   return json(await res.json());
 }
 
 // ---------- 유틸 ----------
+
+/** 상위 API 오류 응답의 앞부분 (원인 파악용). 키 값은 응답에 포함되지 않는다. */
+async function upstreamDetail(res: Response): Promise<string> {
+  return (await res.text()).slice(0, 300);
+}
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
