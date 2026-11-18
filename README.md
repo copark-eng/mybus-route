@@ -8,6 +8,7 @@
 
 ## 구조
 웹 화면과 API 를 Cloudflare Worker 하나로 배포합니다 ([ADR-020](doc/adr.md#adr-020)).
+서비스 주소: https://mybus-route.copark-ai.workers.dev
 ```
 web/      프런트엔드 (TypeScript + Vite, 네이버 지도) → 빌드 결과 web/dist
 worker/   Cloudflare Worker: web/dist 정적 파일 + /api/* (data.go.kr, NCP Geocoding)
