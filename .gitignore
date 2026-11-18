@@ -10,3 +10,6 @@ dist/
 
 # 개인 파일
 private/
+
+# 정류장 DB 수집 캐시
+scripts/.cache/

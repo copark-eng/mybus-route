@@ -33,6 +33,13 @@ cp web/.env.example web/.env                   # NCP Client ID 입력
 npm run dev:web                                # http://localhost:5173  (/api 는 8787 로 전달)
 ```
 
+## 정류장·노선 DB 수집
+```
+npm run build:db      # worker/.dev.vars 의 BUS_API_KEY 사용 → web/public/data/*.json
+```
+- 성남시 정류장에서 시작해 경유 노선 → 노선의 정류장 순서를 따라가며 모읍니다 ([ADR-006](doc/adr.md#adr-006)).
+- data.go.kr 개발계정은 정류소 조회가 **하루 약 1,000건**이라 한 번에 다 못 모읍니다. 응답은 `scripts/.cache`에 저장되므로 다음 날 다시 실행하면 이어서 수집합니다. 덜 끝난 경우 데이터에 `partial` 표시가 붙고 화면 아래에 "일부 정류장 수집 중"이 보입니다.
+
 ## 배포 (Cloudflare)
 ### 처음 한 번
 ```

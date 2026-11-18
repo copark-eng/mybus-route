@@ -43,6 +43,8 @@ export default {
 interface RouteArrival {
   routeId: string;
   routeName: string;
+  /** 이 정류장이 노선에서 몇 번째인지 (1부터). 같은 정류장을 왕복으로 두 번 지나는 노선을 구분할 때 쓴다. */
+  staOrder: number | null;
   arrivals: { seconds: number; stopsLeft: number | null; plateNo: string | null }[];
 }
 
@@ -62,7 +64,12 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
   upstream.searchParams.set("stationId", stationId);
   upstream.searchParams.set("format", "json");
 
-  const res = await fetch(upstream);
+  // data.go.kr 초당 호출 제한(429)에 걸리면 잠시 뒤 다시 시도한다
+  let res = await fetch(upstream);
+  for (let attempt = 1; res.status === 429 && attempt <= 3; attempt++) {
+    await new Promise((r) => setTimeout(r, 300 * attempt));
+    res = await fetch(upstream);
+  }
   if (!res.ok) return json({ error: `data.go.kr ${res.status}` }, 502);
   const body = (await res.json()) as any;
   const header = body?.response?.msgHeader ?? {};
@@ -73,6 +80,7 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
   const data: RouteArrival[] = items.map((it) => ({
     routeId: String(it.routeId),
     routeName: String(it.routeName ?? ""),
+    staOrder: toInt(it.staOrder),
     arrivals: [1, 2].flatMap((n) => {
       const sec = toInt(it[`predictTimeSec${n}`]) ?? mul60(toInt(it[`predictTime${n}`]));
       if (sec === null) return [];
