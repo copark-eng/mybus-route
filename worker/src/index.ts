@@ -1,15 +1,15 @@
 /**
- * mybus-route API 프록시 (ADR-004)
+ * mybus-route Worker (ADR-004, ADR-020)
+ * 정적 파일(web/dist)은 Workers Static Assets 가 응답하고, /api/* 만 이 코드가 처리한다.
  *
- *   GET /arrivals?stationId=206000004      경기도 버스도착정보 (20초 캐시, ADR-015)
- *   GET /geocode?query=성남시 분당구 ...      NCP Geocoding (ADR-013, ADR-019)
- *   GET /reverse-geocode?lng=127.1&lat=37.3  NCP Reverse Geocoding
+ *   GET /api/arrivals?stationId=206000004      경기도 버스도착정보 (20초 캐시, ADR-015)
+ *   GET /api/geocode?query=성남시 분당구 ...      NCP Geocoding (ADR-013, ADR-019)
+ *   GET /api/reverse-geocode?lng=127.1&lat=37.3  NCP Reverse Geocoding
  */
 export interface Env {
   BUS_API_KEY: string;
   NCP_KEY_ID: string;
   NCP_KEY: string;
-  ALLOWED_ORIGINS: string;
 }
 
 const ARRIVAL_URL = "https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArrivalListv2";
@@ -19,35 +19,21 @@ const ARRIVAL_TTL_SEC = 20;
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const origin = req.headers.get("Origin");
-    const allowed = env.ALLOWED_ORIGINS.split(",").map((s) => s.trim());
-    const cors: Record<string, string> =
-      origin && allowed.includes(origin)
-        ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" }
-        : {};
-
-    if (req.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: { ...cors, "Access-Control-Allow-Methods": "GET", "Access-Control-Max-Age": "86400" },
-      });
-    }
-    if (req.method !== "GET") return json({ error: "method not allowed" }, 405, cors);
-
+    if (req.method !== "GET") return json({ error: "method not allowed" }, 405);
     const url = new URL(req.url);
     try {
       switch (url.pathname) {
-        case "/arrivals":
-          return withCors(await arrivals(url, env, ctx), cors);
-        case "/geocode":
-          return withCors(await geocode(url, env), cors);
-        case "/reverse-geocode":
-          return withCors(await reverseGeocode(url, env), cors);
+        case "/api/arrivals":
+          return await arrivals(url, env, ctx);
+        case "/api/geocode":
+          return await geocode(url, env);
+        case "/api/reverse-geocode":
+          return await reverseGeocode(url, env);
         default:
-          return json({ error: "not found" }, 404, cors);
+          return json({ error: "not found" }, 404);
       }
     } catch (e) {
-      return json({ error: String(e) }, 502, cors);
+      return json({ error: String(e) }, 502);
     }
   },
 };
@@ -145,11 +131,6 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
   });
 }
 
-function withCors(res: Response, cors: Record<string, string>): Response {
-  const out = new Response(res.body, res);
-  for (const [k, v] of Object.entries(cors)) out.headers.set(k, v);
-  return out;
-}
 
 /** API 가 결과 1건이면 객체, 여러 건이면 배열로 주는 경우를 통일한다. */
 function toList(v: unknown): any[] {

@@ -56,7 +56,7 @@
 |---|---|
 | NFR-1 | TypeScript + Vite 기반 웹 프런트엔드 ([ADR-001](adr.md#adr-001)) |
 | NFR-2 | 지도는 네이버 지도 JavaScript API 사용 ([ADR-002](adr.md#adr-002)) |
-| NFR-3 | GitHub 저장소로 관리하고 무료 호스팅에 배포 ([ADR-003](adr.md#adr-003)) |
+| NFR-3 | GitHub 저장소로 관리하고, 웹과 API를 Cloudflare Workers(무료)에 배포 ([ADR-020](adr.md#adr-020)) |
 | NFR-4 | data.go.kr 인증키는 브라우저에 노출하지 않는다 ([ADR-004](adr.md#adr-004)) |
 | NFR-5 | 운영 비용 0원 (무료 사용량 범위 내) |
 | NFR-6 | 공공 API 호출 수를 캐싱으로 줄여 일일 호출 한도 안에서 동작한다. |

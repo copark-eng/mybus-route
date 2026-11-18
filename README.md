@@ -7,19 +7,20 @@
 - 의사결정 목록: [doc/decisions.md](doc/decisions.md)
 
 ## 구조
+웹 화면과 API 를 Cloudflare Worker 하나로 배포합니다 ([ADR-020](doc/adr.md#adr-020)).
 ```
-web/      프런트엔드 (TypeScript + Vite, 네이버 지도) → GitHub Pages
-worker/   API 프록시 (Cloudflare Workers) → data.go.kr, NCP Geocoding
+web/      프런트엔드 (TypeScript + Vite, 네이버 지도) → 빌드 결과 web/dist
+worker/   Cloudflare Worker: web/dist 정적 파일 + /api/* (data.go.kr, NCP Geocoding)
 doc/      요구사항, ADR
-.github/  GitHub Pages 배포 워크플로
 ```
 
 ## 로컬 실행
 ```
 npm install
+npm approve-scripts workerd        # 처음 한 번 (wrangler 로컬 실행에 필요)
 ```
 
-API 프록시 (터미널 1):
+API (터미널 1):
 ```
 cp worker/.dev.vars.example worker/.dev.vars   # 키 입력
 npm run dev:worker                             # http://localhost:8787
@@ -28,14 +29,33 @@ npm run dev:worker                             # http://localhost:8787
 웹 (터미널 2):
 ```
 cp web/.env.example web/.env                   # NCP Client ID 입력
-npm run dev:web                                # http://localhost:5173/mybus-route/
+npm run dev:web                                # http://localhost:5173  (/api 는 8787 로 전달)
 ```
 
-## 배포
-- **프록시:** `cd worker && npx wrangler login && npx wrangler secret put BUS_API_KEY` (NCP_KEY_ID, NCP_KEY 도 같은 방식) → `npm run deploy -w worker`
-- **웹:** main 브랜치에 push 하면 GitHub Actions 가 GitHub Pages 에 배포합니다. 저장소 설정은 [deploy-web.yml](.github/workflows/deploy-web.yml) 상단 주석을 참고하세요.
+## 배포 (Cloudflare)
+### 처음 한 번
+```
+cd worker
+npx wrangler login
+npx wrangler secret put BUS_API_KEY
+npx wrangler secret put NCP_KEY_ID
+npx wrangler secret put NCP_KEY
+```
+
+### 방법 1: 직접 배포
+```
+npm run deploy        # web 빌드 → worker 배포
+```
+
+### 방법 2: GitHub push 시 자동 배포 (Workers Builds)
+Cloudflare 대시보드 → Workers & Pages → `mybus-route` → Settings → Builds → GitHub 저장소 연결
+- Root directory: `/`
+- Build command: `npm ci && npm run build -w web`
+- Deploy command: `npx wrangler deploy --config worker/wrangler.toml`
+- Build variables: `VITE_NAVER_MAP_CLIENT_ID`
 
 ## 준비할 계정·API
 - data.go.kr: 경기도_버스도착정보 조회(승인됨), 경기도_정류소 조회, 경기도_버스노선 조회
 - 네이버 클라우드 플랫폼: Maps 애플리케이션 (Dynamic Map, Geocoding, Reverse Geocoding)
+  - 서비스 URL: Worker 주소(`https://mybus-route.<서브도메인>.workers.dev`), `http://localhost:5173`
 - Cloudflare 계정 (Workers 무료 플랜)

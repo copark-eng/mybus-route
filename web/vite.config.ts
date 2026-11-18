@@ -1,6 +1,12 @@
 import { defineConfig } from "vite";
 
-// GitHub Pages 주소가 https://<아이디>.github.io/mybus-route/ 이므로 base 를 맞춘다 (ADR-001, ADR-003).
+// 웹과 API 를 같은 Worker 주소에서 제공한다 (ADR-020).
+// 로컬 개발 중에는 /api 요청을 로컬 Worker(wrangler dev, 8787)로 넘긴다.
 export default defineConfig({
-  base: "/mybus-route/",
+  base: "/",
+  server: {
+    proxy: {
+      "/api": "http://localhost:8787",
+    },
+  },
 });

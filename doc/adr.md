@@ -9,8 +9,8 @@
 |---|---|---|
 | [ADR-001](#adr-001) | 프런트엔드: TypeScript + Vite | 확정 |
 | [ADR-002](#adr-002) | 지도: 네이버 지도 JavaScript API | 확정 |
-| [ADR-003](#adr-003) | 호스팅: GitHub Pages | 확정 |
-| [ADR-004](#adr-004) | API 프록시: Cloudflare Workers | 확정 |
+| [ADR-003](#adr-003) | 호스팅: GitHub Pages | 대체됨 → ADR-020 |
+| [ADR-004](#adr-004) | API 프록시: Cloudflare Workers | 확정, 일부 변경 → ADR-020 |
 | [ADR-005](#adr-005) | 데이터: data.go.kr 경기도 버스 API | 확정 |
 | [ADR-006](#adr-006) | 정류장 DB: 정적 JSON + GitHub Actions 갱신 | 확정 |
 | [ADR-007](#adr-007) | 저장: 브라우저 localStorage | 확정 |
@@ -26,6 +26,7 @@
 | [ADR-017](#adr-017) | 즐겨찾기 단위: 경로 전체 (D-08) | 확정 |
 | [ADR-018](#adr-018) | 저장소: 새 GitHub 저장소 mybus-route (D-09) | 확정 |
 | [ADR-019](#adr-019) | 네이버 검색 API 제외, 주소 검색만 사용 | 확정 |
+| [ADR-020](#adr-020) | 배포: 웹과 API 모두 Cloudflare Workers | 확정 |
 
 ---
 
@@ -69,7 +70,7 @@ TypeScript와 Vite로 개발하고, 빌드 결과물(정적 파일)을 배포한
 
 <a id="adr-003"></a>
 ## ADR-003: 호스팅은 GitHub Pages
-- 상태: 확정
+- 상태: 대체됨 → ADR-020 (2026-11-18)
 - 날짜: 2026-11-18
 
 **배경**
@@ -87,7 +88,7 @@ GitHub에서 코드를 관리하고 무료로 배포하려고 한다.
 
 <a id="adr-004"></a>
 ## ADR-004: API 프록시로 Cloudflare Workers 사용
-- 상태: 확정 (2026-11-18 검토 후 확정)
+- 상태: 확정 (2026-11-18 검토 후 확정), 배포 방식과 CORS 부분은 ADR-020으로 변경
 - 날짜: 2026-11-18
 
 **배경**
@@ -446,3 +447,29 @@ ADR-013에서는 장소 이름 검색에 네이버 검색 API(지역 검색)를 
 - 다만 "판교역", "서현역", "분당구청"처럼 **정류장 이름에 들어 있는 장소**는 정류장 자동완성으로 찾을 수 있다.
 - 신청할 API에서 네이버 개발자센터(검색 API)가 빠진다. NCP Maps(지도, Geocoding, Reverse Geocoding)만 있으면 된다.
 - NCP Geocoding은 도로명·지번 주소 입력에 맞춰져 있으므로, 자동완성은 입력이 주소 형태일 때(예: 숫자나 "로/길/동"이 들어 있을 때) 우선으로 호출한다.
+
+---
+
+<a id="adr-020"></a>
+## ADR-020: 웹 화면과 API를 모두 Cloudflare Workers 하나로 배포
+- 상태: 확정 (ADR-003 대체, ADR-004 일부 변경)
+- 날짜: 2026-11-18
+
+**배경**
+ADR-003은 웹 화면을 GitHub Pages에, ADR-004는 API 프록시를 Cloudflare Workers에 두는 구성이었다. 배포 위치가 두 곳이라 관리할 곳이 많고, 서로 다른 주소라 CORS 설정이 필요했다. Cloudflare Workers는 정적 파일 제공이 무료이고 요청 수 제한도 없다.
+
+**결정**
+- Worker 하나(`mybus-route`)가 **웹 화면(정적 파일)과 API를 함께** 제공한다.
+  - `/api/*` 요청은 Worker 코드가 처리한다 (도착정보, Geocoding).
+  - 나머지 요청은 `web/dist`의 정적 파일로 응답한다 (Workers Static Assets).
+- 웹과 API가 같은 주소를 쓰므로 **CORS 설정을 없앤다.** 로컬 개발에서는 Vite 개발 서버가 `/api`를 로컬 Worker로 넘긴다.
+- 배포는 Cloudflare의 **Workers Builds**를 GitHub 저장소에 연결해서 `main`에 push할 때마다 자동으로 한다. GitHub Pages 배포 워크플로는 지운다.
+- GitHub 저장소는 코드 보관용이며 **Public을 유지**한다 (2026-11-18 결정). 나중에 Private으로 바꿔도 배포에는 영향이 없다.
+
+**결과**
+- 서비스 주소: `https://mybus-route.<Cloudflare 계정 서브도메인>.workers.dev` (나중에 도메인을 붙일 수 있다).
+- 네이버 지도(NCP) 서비스 URL에는 위 주소와 `http://localhost:5173`을 등록한다 (ADR-002).
+- Vite `base`는 `/`가 된다 (ADR-001).
+- 네이버 지도 Client ID는 빌드할 때 넣으므로 Workers Builds의 빌드 변수(`VITE_NAVER_MAP_CLIENT_ID`)로 등록한다.
+- 정류장 DB 주간 갱신(ADR-016)은 계속 GitHub Actions로 실행하고, 결과를 커밋하면 Workers Builds가 다시 배포한다.
+- 정적 파일 요청은 무료이고 Worker 요청 수(하루 10만)에 세지 않는다. `/api/*` 요청만 센다.

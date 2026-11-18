@@ -8,9 +8,8 @@ export interface RouteArrival {
 }
 
 async function getJson<T>(path: string, params: Record<string, string>): Promise<T> {
-  const url = new URL(path, config.apiBase);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const res = await fetch(url);
+  const query = new URLSearchParams(params).toString();
+  const res = await fetch(`${config.apiBase}${path}?${query}`);
   if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
   return res.json() as Promise<T>;
 }
