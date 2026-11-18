@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>mybus-route</title>
+  </head>
+  <body>
+    <div id="map"></div>
+    <section id="panel">
+      <form id="search" autocomplete="off">
+        <input id="from" placeholder="출발지 (정류장 이름·번호, 주소)" />
+        <input id="to" placeholder="도착지 (정류장 이름·번호, 주소)" />
+      </form>
+      <div id="status"></div>
+      <ul id="results"></ul>
+    </section>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

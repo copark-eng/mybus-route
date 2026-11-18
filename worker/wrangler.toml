@@ -1,0 +1,12 @@
+name = "mybus-route-api"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[vars]
+# 쉼표로 구분. GitHub Pages 주소는 배포 후 <아이디> 를 바꿔 넣는다.
+ALLOWED_ORIGINS = "http://localhost:5173,https://<아이디>.github.io"
+
+# 비밀값은 여기 적지 말고 아래 명령으로 등록한다 (로컬은 .dev.vars):
+#   npx wrangler secret put BUS_API_KEY
+#   npx wrangler secret put NCP_KEY_ID
+#   npx wrangler secret put NCP_KEY
