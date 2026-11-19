@@ -128,7 +128,9 @@ export async function initMap(
     setEndpoints(from, to) {
       endpointMarkers.forEach((m) => m.setMap(null));
       endpointMarkers = [];
-      for (const [p, cls, text] of [[from, "from", "출"], [to, "to", "도"]] as const) {
+      // 내 위치면 "나" (ADR-030)
+      const mark = (p: Place | null, def: string) => (p && p.kind === "point" && p.mine ? "나" : def);
+      for (const [p, cls, text] of [[from, "from", mark(from, "출")], [to, "to", mark(to, "도")]] as const) {
         if (!p) continue;
         endpointMarkers.push(new naver.maps.Marker({
           position: new naver.maps.LatLng(p.lat, p.lng),

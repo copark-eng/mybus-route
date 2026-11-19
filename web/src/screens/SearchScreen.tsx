@@ -17,6 +17,12 @@ import { fetchArrivals, type StationArrivals } from "../lib/api";
 import type { Station } from "../lib/data";
 import { type Place, samePlace } from "../lib/places";
 import { findPlans } from "../lib/router";
+import { distanceM } from "../lib/data";
+import { isMine, myLocationPlace } from "../lib/places";
+import { getMyLocation, LOCATION_ERROR_TEXT, type LocationError, useMyLocation } from "../hooks/useMyLocation";
+
+/** 내 위치가 이만큼 바뀌면 출발지를 옮기고 경로를 다시 찾는다 */
+const MOVE_THRESHOLD_M = 30;
 
 /** 검색 화면: 입력 + 지도 + 결과 카드 + 출발 정류장 도착판. 상세로 갈 때는 숨겨서 상태를 유지한다 */
 export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav; active: boolean }) {
@@ -74,6 +80,36 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
 
   const refreshAll = () => { opts.refresh(); void boardRefresh.runNow(); };
 
+  // ---- 내 위치 (ADR-030): 출발(또는 도착)이 내 위치면 화면이 보이는 동안 계속 따라간다 ----
+  const tracking = isMine(from) || isMine(to);
+  const my = useMyLocation(tracking && live);
+  const [locating, setLocating] = useState(false);
+  const [locError, setLocError] = useState<string | null>(null);
+  useEffect(() => {
+    if (my.error) setLocError(LOCATION_ERROR_TEXT[my.error]);
+  }, [my.error]);
+  useEffect(() => {
+    const loc = my.location;
+    if (!loc) return;
+    // 30m 넘게 움직였을 때만 바꾼다 (바꿀 때마다 경로를 다시 계산하므로)
+    const follow = (p: Place | null) =>
+      p && isMine(p) && distanceM(p.lat, p.lng, loc.lat, loc.lng) > MOVE_THRESHOLD_M ? myLocationPlace(loc.lat, loc.lng) : p;
+    setFrom(follow);
+    setTo(follow);
+  }, [my.location]);
+  const useMyLocationAsFrom = async () => {
+    setLocating(true);
+    setLocError(null);
+    try {
+      const loc = await getMyLocation();
+      setFrom(myLocationPlace(loc.lat, loc.lng));
+    } catch (e) {
+      setLocError(LOCATION_ERROR_TEXT[(e as LocationError)] ?? "현재 위치를 찾을 수 없습니다");
+    } finally {
+      setLocating(false);
+    }
+  };
+
   const setPlace = (role: "from" | "to", p: Place | null) => (role === "from" ? setFrom(p) : setTo(p));
   const onPickMap = useCallback((p: Place, role: "from" | "to") => {
     (role === "from" ? setFrom : setTo)((old) => (old && samePlace(old, p) ? old : p));
@@ -109,6 +145,23 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
           fromRef={fromRef}
           toRef={toRef}
         />
+        <div className="my-location-row">
+          <button
+            type="button"
+            className={`chip-btn${isMine(from) ? " is-on" : ""}`}
+            onClick={useMyLocationAsFrom}
+            disabled={locating}
+            data-testid="my-location"
+          >
+            📍 {locating ? "위치 찾는 중…" : isMine(from) ? "내 위치에서 출발 (실시간)" : "내 위치에서 출발"}
+          </button>
+          {tracking && my.location && (
+            <span className="muted small" data-testid="my-location-status">
+              {my.location.accuracy > 100 ? `정확도 약 ${Math.round(my.location.accuracy)}m` : "위치 따라가는 중"}
+            </span>
+          )}
+        </div>
+        {locError && <p className="msg small" role="alert" data-testid="my-location-error">{locError}</p>}
         {/* 출발지·도착지 날씨 (ADR-026). 아직 고르지 않았으면 기본 위치 */}
         <RouteWeather from={from} to={to} />
       </div>

@@ -43,7 +43,9 @@ function write(s: Store) {
   }
 }
 
-const placeKey = (p: Place) => (p.kind === "station" ? `s:${p.stationId}` : `p:${p.lat.toFixed(5)},${p.lng.toFixed(5)}`);
+/** 내 위치는 좌표가 계속 바뀌어도 같은 항목으로 본다 (최근 검색이 위치마다 쌓이지 않게, ADR-030) */
+const placeKey = (p: Place) =>
+  p.kind === "station" ? `s:${p.stationId}` : p.mine ? "me" : `p:${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
 
 export const getPairs = () => read().pairs;
 

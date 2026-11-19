@@ -3,14 +3,26 @@ import type { BusDb, Station } from "./data";
 
 export type Place =
   | { kind: "station"; stationId: string; label: string; lat: number; lng: number }
-  | { kind: "point"; label: string; lat: number; lng: number };
+  /** mine: 내 위치 (ADR-030). 화면이 켜져 있는 동안 좌표가 실시간으로 바뀐다 */
+  | { kind: "point"; label: string; lat: number; lng: number; mine?: true };
+
+export const MY_LOCATION_LABEL = "내 위치";
 
 export function stationPlace(s: Station): Place {
   return { kind: "station", stationId: s.id, label: `${s.name} (${s.no})`, lat: s.y, lng: s.x };
 }
 
+export function myLocationPlace(lat: number, lng: number): Place {
+  return { kind: "point", label: MY_LOCATION_LABEL, lat, lng, mine: true };
+}
+
+export const isMine = (p: Place | null | undefined): boolean => !!p && p.kind === "point" && !!p.mine;
+
 export const samePlace = (a: Place, b: Place) =>
-  a.kind === b.kind && (a.kind === "station" ? a.stationId === (b as any).stationId : a.lat === b.lat && a.lng === b.lng);
+  a.kind === b.kind &&
+  (a.kind === "station"
+    ? a.stationId === (b as any).stationId
+    : isMine(a) !== isMine(b) ? false : isMine(a) ? true : a.lat === b.lat && a.lng === b.lng);
 
 // ---------- 정류장 이름 검색 ----------
 
