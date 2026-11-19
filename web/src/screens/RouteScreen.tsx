@@ -7,8 +7,10 @@ import { useDb } from "../context";
 import { useArrivalsRefresh } from "../hooks/useArrivalsRefresh";
 import { useCountdown } from "../hooks/useCountdown";
 import { useVisible } from "../hooks/useVisible";
+import { NaverMap } from "../components/features/NaverMap";
 import { type BusLocation, fetchBusLocations } from "../lib/api";
 import type { Route } from "../lib/data";
+import { busPoint, loadShape, type Shape } from "../lib/shapes";
 
 const REFRESH_MS = 15_000;
 
@@ -35,6 +37,23 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
   }, [view.routeId]);
   const refresh = useArrivalsRefresh(task, !!route && visible, REFRESH_MS);
 
+  // 지도용: 노선 형상(도로 선)을 받아 두고, 버스를 도로 위에 놓는다 (ADR-029)
+  const [shape, setShape] = useState<Shape | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadShape(view.routeId).then((s) => { if (alive) setShape(s); });
+    return () => { alive = false; };
+  }, [view.routeId]);
+  const busMarkers = useMemo(() => {
+    if (!route || !buses) return [];
+    return buses.flatMap((b) => {
+      const p = busPoint(db, route, shape, b.stationSeq - 1, b.stateCd);
+      return p ? [{ lat: p[0], lng: p[1], label: `${route.name}번 ${b.plateNo ?? ""}` }] : [];
+    });
+  }, [db, route, shape, buses]);
+  const mark = view.stationId ? db.stations.get(view.stationId) : undefined;
+  const markPlace = mark ? { kind: "station" as const, stationId: mark.id, label: mark.name, lat: mark.y, lng: mark.x } : null;
+
   if (!route) {
     return (
       <main className="screen" data-testid="screen-route">
@@ -56,6 +75,7 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
       <RouteInfo route={route} buses={buses} failed={!!error && buses === null} />
       <RefreshStatus lastUpdated={refresh.lastRun} loading={refresh.running} now={now} error={error} onRefresh={() => void refresh.runNow()} />
       {error && <p className="msg small" data-testid="route-error">버스 위치를 불러오지 못했습니다: {error}</p>}
+      <NaverMap from={markPlace} to={null} line={route} buses={busMarkers} className="map-route" />
       <RouteLine route={route} buses={buses ?? []} highlight={view.stationId} />
     </main>
   );

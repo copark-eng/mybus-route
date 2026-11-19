@@ -15,6 +15,10 @@ export type PickHandler = (place: Place, role: "from" | "to") => void;
 export interface MapView {
   setEndpoints(from: Place | null, to: Place | null): void;
   showPath(segments: { coords: [number, number][]; color: string }[]): void;
+  /** 운행 중 버스 표시 (노선 정보 화면, ADR-028) */
+  showBuses(buses: { lat: number; lng: number; label: string }[]): void;
+  /** 좌표들이 다 보이게 */
+  fitTo(coords: [number, number][]): void;
   focus(lat: number, lng: number): void;
   /** 지도와 이벤트를 정리한다 (React 언마운트 시) */
   destroy(): void;
@@ -118,6 +122,7 @@ export async function initMap(
   // ---- 출발·도착 표시와 경로 ----
   let endpointMarkers: any[] = [];
   let lines: any[] = [];
+  let busMarkers: any[] = [];
 
   return {
     setEndpoints(from, to) {
@@ -153,6 +158,28 @@ export async function initMap(
         strokeOpacity: 0.85,
       }));
     },
+    showBuses(buses) {
+      busMarkers.forEach((m) => m.setMap(null));
+      busMarkers = buses.map((b) => new naver.maps.Marker({
+        position: new naver.maps.LatLng(b.lat, b.lng),
+        map,
+        title: b.label,
+        icon: { content: `<div class="bus-marker" title="${esc(b.label)}">🚌</div>`, anchor: new naver.maps.Point(14, 14) },
+        zIndex: 200,
+      }));
+    },
+    fitTo(coords) {
+      if (coords.length < 2) return;
+      const ys = coords.map((c) => c[0]);
+      const xs = coords.map((c) => c[1]);
+      map.fitBounds(
+        new naver.maps.LatLngBounds(
+          new naver.maps.LatLng(Math.min(...ys), Math.min(...xs)),
+          new naver.maps.LatLng(Math.max(...ys), Math.max(...xs)),
+        ),
+        { top: 30, right: 30, bottom: 30, left: 30 },
+      );
+    },
     focus(lat, lng) {
       map.panTo(new naver.maps.LatLng(lat, lng));
     },
@@ -161,7 +188,7 @@ export async function initMap(
       const safe = (f: () => void) => { try { f(); } catch { /* 무시 */ } };
       safe(() => resize.disconnect());
       safe(() => info.close());
-      [...stationMarkers, ...endpointMarkers, ...lines].forEach((o) => safe(() => o.setMap(null)));
+      [...stationMarkers, ...endpointMarkers, ...lines, ...busMarkers].forEach((o) => safe(() => o.setMap(null)));
       safe(() => map.destroy());
     },
   };

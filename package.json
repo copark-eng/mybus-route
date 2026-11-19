@@ -10,7 +10,7 @@
     "dev:worker": "npm run dev -w worker",
     "build": "npm run build -w web && npm run typecheck -w worker",
     "deploy": "npm run build && npm run deploy -w worker",
-    "build:db": "node scripts/build-db.ts",
+    "build:db": "node scripts/build-db.ts && node scripts/build-shapes.ts",
     "test": "npm run test -w web && npm run test -w worker"
   },
   "allowScripts": {

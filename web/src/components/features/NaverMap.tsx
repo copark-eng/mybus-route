@@ -3,8 +3,9 @@ import { ErrorBoundary } from "../ui/ErrorBoundary";
 import { useDb } from "../../context";
 import { reverseGeocode } from "../../lib/api";
 import { config } from "../../lib/config";
-import type { Station } from "../../lib/data";
+import type { Route } from "../../lib/data";
 import { initMap, type MapView } from "../../lib/map";
+import { routeSegment, straightSegment, wholeRoute } from "../../lib/shapes";
 import { type Place, directionHint } from "../../lib/places";
 import type { OptionResult } from "../../lib/router";
 import { routeColor } from "../../lib/routeType";
@@ -18,10 +19,14 @@ export function NaverMap(props: ComponentProps<typeof NaverMapInner>) {
   );
 }
 
-function NaverMapInner({ from, to, path, onPick, className = "" }: {
+function NaverMapInner({ from, to, path, line, buses, onPick, className = "" }: {
   from: Place | null;
   to: Place | null;
   path?: OptionResult | null;
+  /** 노선 전체를 도로 선으로 그린다 (노선 정보 화면) */
+  line?: Route | null;
+  /** 운행 중 버스 위치 */
+  buses?: { lat: number; lng: number; label: string }[];
   onPick?(p: Place, role: "from" | "to"): void;
   className?: string;
 }) {
@@ -63,22 +68,40 @@ function NaverMapInner({ from, to, path, onPick, className = "" }: {
     try { view?.setEndpoints(from, to); } catch (e) { console.warn("지도 표시 실패", e); }
   }, [view, from, to]);
 
+  // 경로(승차~하차 구간)를 도로 형상으로 그린다 (ADR-029). 형상을 받기 전에는 정류장 직선을 먼저 보여 준다
+  useEffect(() => {
+    if (!view || line) return;
+    let alive = true;
+    const draw = (segs: { coords: [number, number][]; color: string }[]) => {
+      try { if (alive) view.showPath(segs); } catch (e) { console.warn("경로 표시 실패", e); }
+    };
+    if (!path) { draw([]); return; }
+    const legs = path.legs.map((l, n) => ({ route: l.route, from: path.plan.legs[n].fromIndex, to: path.plan.legs[n].toIndex }));
+    draw(legs.map((l) => ({ color: routeColor(l.route.type), coords: straightSegment(db, l.route, l.from, l.to) })));
+    Promise.all(legs.map((l) => routeSegment(db, l.route, l.from, l.to))).then((segs) =>
+      draw(segs.map((coords, n) => ({ color: routeColor(legs[n].route.type), coords }))),
+    );
+    return () => { alive = false; };
+  }, [view, path, db, line]);
+
+  // 노선 전체 (노선 정보 화면)
+  useEffect(() => {
+    if (!view || !line) return;
+    let alive = true;
+    wholeRoute(db, line).then((coords) => {
+      if (!alive) return;
+      try {
+        view.showPath([{ coords, color: routeColor(line.type) }]);
+        view.fitTo(coords);
+      } catch (e) { console.warn("노선 표시 실패", e); }
+    });
+    return () => { alive = false; };
+  }, [view, line, db]);
+
   useEffect(() => {
     if (!view) return;
-    try {
-      if (!path) { view.showPath([]); return; }
-      view.showPath(path.legs.map((l, n) => ({
-      color: routeColor(l.route.type),
-      coords: l.route.stops
-        .slice(path.plan.legs[n].fromIndex, path.plan.legs[n].toIndex + 1)
-        .map((id) => db.stations.get(id))
-        .filter((s): s is Station => !!s)
-        .map((s) => [s.y, s.x] as [number, number]),
-      })));
-    } catch (e) {
-      console.warn("경로 표시 실패", e);
-    }
-  }, [view, path, db]);
+    try { view.showBuses(buses ?? []); } catch (e) { console.warn("버스 표시 실패", e); }
+  }, [view, buses]);
 
   if (failed) {
     return <div className={`map map-missing ${className}`} data-testid="map">{failed}</div>;

@@ -34,3 +34,10 @@
 }
 .picker-btns [data-role="from"] { background: #0f766e; }
 .picker-btns [data-role="to"] { background: #c2410c; }
+
+/* 노선 정보 화면 지도 + 버스 표시 (ADR-028, ADR-029) */
+.map-route { height: 260px; border-radius: var(--r-md); overflow: hidden; margin: var(--sp-3, 12px) 0; }
+.bus-marker {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 15px;
+  background: #fff; border: 2px solid var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
