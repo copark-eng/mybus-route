@@ -46,6 +46,11 @@ export async function initMap(
     scaleControl: false,
     mapDataControl: false,
   });
+  // 레이아웃이 자리 잡기 전 크기로 지도가 만들어지면 가운데가 어긋나 팝업이 잘린다 → 실제 크기를 계속 알려 준다
+  const resize = new ResizeObserver(() => {
+    if (el.clientWidth && el.clientHeight) map.setSize(new naver.maps.Size(el.clientWidth, el.clientHeight));
+  });
+  resize.observe(el);
   const info = new naver.maps.InfoWindow({ borderWidth: 0, backgroundColor: "transparent", disableAnchor: true, pixelOffset: new naver.maps.Point(0, -8) });
 
   // ---- 정류장 마커 (화면에 보이는 영역만) ----
@@ -73,26 +78,39 @@ export async function initMap(
   renderStations();
 
   // ---- 지도에서 고르기 ----
+  /** 팝업을 닫거나 새로 열 때마다 올린다. 주소 확인이 늦게 끝나도 닫은 팝업을 다시 열지 않기 위함 */
+  let pickerSeq = 0;
+  const closePicker = () => { pickerSeq++; info.close(); };
+
   function openPicker(lat: number, lng: number, title: string, sub: string, place: Place) {
     const box = document.createElement("div");
     box.className = "picker";
-    box.innerHTML = `<strong>${esc(title)}</strong>${sub ? `<small>${esc(sub)}</small>` : ""}
-      <div class="picker-btns"><button data-role="from">출발</button><button data-role="to">도착</button></div>`;
+    box.innerHTML = `<button type="button" class="picker-close" data-close aria-label="닫기">✕</button>
+      <strong>${esc(title)}</strong>${sub ? `<small>${esc(sub)}</small>` : ""}
+      <div class="picker-btns"><button type="button" data-role="from">출발</button><button type="button" data-role="to">도착</button></div>`;
     box.addEventListener("click", (e) => {
-      const role = (e.target as HTMLElement).dataset.role as "from" | "to" | undefined;
-      if (role) { info.close(); onPick?.(place, role); }
+      const t = (e.target as HTMLElement).closest<HTMLElement>("button");
+      if (!t) return;
+      if (t.dataset.close !== undefined) { closePicker(); return; }
+      const role = t.dataset.role as "from" | "to" | undefined;
+      if (role) { closePicker(); onPick?.(place, role); }
     });
+    box.addEventListener("keydown", (e) => { if (e.key === "Escape") closePicker(); });
     info.setContent(box);
     const pos = new naver.maps.LatLng(lat, lng);
-    map.panTo(pos); // 화면 가장자리에서 눌러도 팝업이 잘리지 않게
+    // 화면 가장자리에서 눌러도 팝업이 잘리지 않게: 누른 곳을 지도 가운데로, 팝업이 위로 열릴 자리를 조금 더 둔다
+    map.setCenter(pos);
+    map.panBy(new naver.maps.Point(0, -Math.min(60, el.clientHeight * 0.15)));
     info.open(map, pos);
   }
 
   if (onPick) naver.maps.Event.addListener(map, "click", async (e: any) => {
     const lat = e.coord.y;
     const lng = e.coord.x;
+    const seq = ++pickerSeq;
     openPicker(lat, lng, "주소 확인 중…", "", { kind: "point", label: "지도에서 선택한 위치", lat, lng });
     const addr = await reverse(lng, lat).catch(() => null);
+    if (seq !== pickerSeq) return; // 그사이 닫았거나 다른 곳을 눌렀다
     const label = addr ?? "지도에서 선택한 위치";
     openPicker(lat, lng, label, "이 위치에서 가까운 정류장으로 찾습니다", { kind: "point", label, lat, lng });
   });
@@ -141,6 +159,7 @@ export async function initMap(
     destroy() {
       // SDK 내부 상태(인증 실패 등)에 따라 예외가 날 수 있어 각각 감싼다
       const safe = (f: () => void) => { try { f(); } catch { /* 무시 */ } };
+      safe(() => resize.disconnect());
       safe(() => info.close());
       [...stationMarkers, ...endpointMarkers, ...lines].forEach((o) => safe(() => o.setMap(null)));
       safe(() => map.destroy());

@@ -15,7 +15,16 @@
   border-radius: var(--r-md); padding: var(--sp-3);
   box-shadow: var(--shadow-2); border: 1px solid var(--pop-border);
   display: grid; gap: var(--sp-1); min-width: 180px; max-width: 260px;
+  position: relative;
 }
+/* 닫기(✕): 오른쪽 위. 제목이 버튼 밑으로 들어가지 않게 제목 오른쪽을 비운다 */
+.picker-close {
+  position: absolute; top: 2px; right: 2px; width: 36px; height: 36px;
+  border: 0; border-radius: 50%; background: none; color: var(--text-2); font-size: 16px; line-height: 1; cursor: pointer;
+}
+.picker-close:hover { background: var(--surface); }
+.picker-close:focus-visible { outline: 2px solid var(--accent); }
+.picker strong { padding-right: 28px; }
 .picker strong { font: var(--fs-body); font-weight: 600; }
 .picker small { color: var(--text-2); }
 .picker-btns { display: flex; gap: var(--sp-2); margin-top: var(--sp-1); }
