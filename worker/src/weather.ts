@@ -29,13 +29,25 @@ export interface WeatherSummary {
 }
 
 export async function weather(url: URL, serviceKey: string, ctx: ExecutionContext): Promise<Response> {
-  const lat = parseCoord(url.searchParams.get("lat"), DEFAULT_LAT);
-  const lng = parseCoord(url.searchParams.get("lng"), DEFAULT_LNG);
-  if (lat === null || lng === null) return json({ error: "lat, lng 가 필요합니다" }, 400);
-  if (lat < LAT_RANGE[0] || lat > LAT_RANGE[1] || lng < LNG_RANGE[0] || lng > LNG_RANGE[1]) {
-    return json({ error: "lat, lng 범위를 벗어났습니다" }, 400);
+  let nx: number, ny: number;
+  const gx = url.searchParams.get("nx");
+  const gy = url.searchParams.get("ny");
+  if (gx !== null || gy !== null) {
+    // 웹은 위치 대신 기상청 격자(약 5km)만 보낸다 (ADR-033, 개인위치정보 최소 전송)
+    nx = Number(gx);
+    ny = Number(gy);
+    if (!Number.isInteger(nx) || !Number.isInteger(ny) || nx < 1 || nx > 149 || ny < 1 || ny > 253) {
+      return json({ error: "nx, ny 범위를 벗어났습니다" }, 400);
+    }
+  } else {
+    const lat = parseCoord(url.searchParams.get("lat"), DEFAULT_LAT);
+    const lng = parseCoord(url.searchParams.get("lng"), DEFAULT_LNG);
+    if (lat === null || lng === null) return json({ error: "lat, lng 가 필요합니다" }, 400);
+    if (lat < LAT_RANGE[0] || lat > LAT_RANGE[1] || lng < LNG_RANGE[0] || lng > LNG_RANGE[1]) {
+      return json({ error: "lat, lng 범위를 벗어났습니다" }, 400);
+    }
+    ({ nx, ny } = toGrid(lat, lng));
   }
-  const { nx, ny } = toGrid(lat, lng);
 
   const okKey = `weather/${nx}-${ny}`;
   const errKey = `weather-err/${nx}-${ny}`;

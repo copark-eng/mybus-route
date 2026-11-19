@@ -1,4 +1,5 @@
 import { config } from "./config";
+import { toGrid } from "./grid";
 
 /** 노선 하나의 도착 예정 정보 (다음 버스 최대 2대). */
 export interface RouteArrival {
@@ -108,14 +109,15 @@ export interface WeatherSummary {
 }
 
 /**
- * 날씨 조회. 좌표는 소수 3자리로 반올림해 보낸다(같은 격자 → Worker 캐시 적중).
+ * 날씨 조회. 위치는 브라우저에서 기상청 격자(약 5km)로 바꿔 격자 번호만 보낸다 (ADR-033: 좌표를 서버로 보내지 않음).
  * 실패(2xx 아님·JSON 파싱 실패)는 예외 — 호출 측에서 null 로 바꿔 날씨 줄을 숨긴다 (FR-6.2).
  */
 export function fetchWeather(lat?: number, lng?: number): Promise<WeatherSummary> {
   const params: Record<string, string> = {};
   if (lat !== undefined && lng !== undefined && Number.isFinite(lat) && Number.isFinite(lng)) {
-    params.lat = lat.toFixed(3);
-    params.lng = lng.toFixed(3);
+    const { nx, ny } = toGrid(lat, lng);
+    params.nx = String(nx);
+    params.ny = String(ny);
   }
   return getJson<WeatherSummary>("/weather", params);
 }

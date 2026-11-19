@@ -251,3 +251,17 @@ describe("/api/arrivals 일일 한도", () => {
     expect(upstream).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("/api/weather 격자 번호 (ADR-033)", () => {
+  it("nx·ny 를 받으면 좌표 변환 없이 그 격자로 기상청을 부른다", async () => {
+    upstream.mockResolvedValue(new Response("Unauthorized", { status: 401 }));
+    await call("/api/weather?nx=62&ny=124");
+    const u = new URL(String(upstream.mock.calls[0][0]));
+    expect([u.searchParams.get("nx"), u.searchParams.get("ny")]).toEqual(["62", "124"]);
+  });
+  it.each(["nx=0&ny=124", "nx=62&ny=999", "nx=a&ny=1", "nx=62"])("잘못된 격자 %s → 400", async (q) => {
+    const r = await call(`/api/weather?${q}`);
+    expect(r.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});

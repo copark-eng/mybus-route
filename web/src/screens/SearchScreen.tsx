@@ -25,6 +25,8 @@ import {
 
 /** 내 위치가 이만큼 바뀌면 출발지를 옮기고 경로를 다시 찾는다 */
 const MOVE_THRESHOLD_M = 30;
+/** 이보다 빨리 거절되면 허용 팝업이 뜨지 않은 것으로 본다 */
+const INSTANT_DENY_MS = 700;
 
 /** 검색 화면: 입력 + 지도 + 결과 카드 + 출발 정류장 도착판. 상세로 갈 때는 숨겨서 상태를 유지한다 */
 export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav; active: boolean }) {
@@ -108,6 +110,7 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
     setLocating(true);
     setLocError(null);
     setLocHelp(false);
+    const asked = Date.now();
     try {
       // 누른 즉시 요청한다: 아직 안 물어본 상태면 브라우저가 허용 팝업을 띄운다 (iPhone 은 탭 직후에만 띄움)
       const loc = await getMyLocation();
@@ -115,12 +118,17 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
     } catch (e) {
       const err = e as LocationError;
       if (err === "denied") {
-        // 팝업에서 '허용 안 함'을 한 번 누른 것인지, 아예 막혀서 팝업이 안 뜬 것인지 구분한다
+        // 1) 팝업에서 '허용 안 함'을 누른 것인지 2) 팝업 없이 바로 거절된 것인지 구분한다.
+        //    사람이 팝업을 읽고 누르는 데는 1초 가까이 걸린다. 그보다 빨리 거절되면 팝업이 뜨지 않은 것이다
+        //    (iPhone: 설정 → 위치 서비스 → Safari 웹 사이트가 '안 함'이면 사이트 설정이 '묻기'여도 바로 거절)
+        const instant = Date.now() - asked < INSTANT_DENY_MS;
         const state = await locationPermission();
-        if (state === "prompt") {
+        if (state === "prompt" && !instant) {
           setLocError("위치 사용을 허용하지 않았습니다. 다시 누르면 다시 물어봅니다.");
         } else {
-          setLocError(LOCATION_ERROR_TEXT.denied);
+          setLocError(instant && state !== "denied"
+            ? "브라우저가 묻지 않고 바로 거절했습니다. 기기 설정에서 브라우저의 위치 사용이 꺼져 있을 수 있습니다."
+            : LOCATION_ERROR_TEXT.denied);
           setLocHelp(true);
         }
       } else {

@@ -10,6 +10,8 @@ import { DetailScreen } from "./screens/DetailScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { RouteScreen } from "./screens/RouteScreen";
 import { SearchScreen } from "./screens/SearchScreen";
+import { PrivacyScreen } from "./screens/PrivacyScreen";
+import { AppMenu } from "./components/features/AppMenu";
 
 export type SearchView = { name: "search"; from?: Place; to?: Place; auto?: boolean; focus?: boolean };
 export type DetailView =
@@ -17,7 +19,9 @@ export type DetailView =
   | { name: "detail"; kind: "result"; from: Place; to: Place; plan: RoutePlan; initial?: OptionResult };
 /** 노선 정보 화면 (ADR-028). stationId 는 강조할 정류장 */
 export type RouteView = { name: "route"; routeId: string; stationId?: string };
-export type View = { name: "home" } | SearchView | DetailView | RouteView;
+/** 메뉴에서 여는 문서 화면 (ADR-033) */
+export type DocView = { name: "privacy" };
+export type View = { name: "home" } | SearchView | DetailView | RouteView | DocView;
 
 export interface Nav {
   navigate(v: View): void;
@@ -30,6 +34,7 @@ function hashOf(v: View): string {
   if (v.name === "search") return "#search";
   if (v.name === "detail") return v.kind === "favorite" ? `#fav/${encodeURIComponent(v.favoriteId)}` : "#route";
   if (v.name === "route") return `#bus/${v.routeId}${v.stationId ? `/${v.stationId}` : ""}`;
+  if (v.name === "privacy") return "#privacy";
   return location.pathname + location.search;
 }
 
@@ -39,6 +44,7 @@ function viewFromHash(): View {
   if (fav) return { name: "detail", kind: "favorite", favoriteId: decodeURIComponent(fav[1]) };
   const bus = /^#bus\/(\d+)(?:\/(\d+))?$/.exec(location.hash);
   if (bus) return { name: "route", routeId: bus[1], stationId: bus[2] };
+  if (location.hash === "#privacy") return { name: "privacy" };
   return HOME;
 }
 
@@ -138,6 +144,9 @@ export function App() {
             <RouteScreen view={v} nav={nav} />
           </ErrorBoundary>
         )}
+        {v.name === "privacy" && <PrivacyScreen nav={nav} />}
+        {/* 모든 화면 오른쪽 위 ☰ 메뉴 (ADR-033) */}
+        <AppMenu onOpen={(name) => { if (v.name !== name) navigate({ name }); }} />
         </RouteLinkContext.Provider>
       </StoreContext.Provider>
     </DbContext.Provider>

@@ -328,3 +328,29 @@ button.card:hover { background: var(--surface-2); }
 .loc-help { margin-top: 8px; display: grid; gap: 10px; }
 .loc-help ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; font: var(--fs-small); }
 .loc-help-actions { display: flex; gap: 8px; }
+
+/* ---- ☰ 메뉴와 문서 화면 (ADR-033) ---- */
+.app-menu { position: fixed; top: max(8px, env(safe-area-inset-top)); right: 8px; z-index: 50; }
+.app-menu-btn {
+  width: 44px; height: 44px; border: 0; border-radius: 50%; cursor: pointer;
+  background: var(--bg); color: var(--text-1); font-size: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.15);
+}
+.app-menu-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app-menu-list {
+  position: absolute; right: 0; top: 50px; margin: 0; padding: 6px; list-style: none; min-width: 220px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: 0 6px 20px rgba(0,0,0,.18);
+}
+.app-menu-list button {
+  width: 100%; min-height: 44px; padding: 0 12px; text-align: left; border: 0; border-radius: 8px;
+  background: none; color: var(--text-1); font: var(--fs-body); cursor: pointer;
+}
+.app-menu-list button:hover, .app-menu-list button:focus-visible { background: var(--surface); outline: none; }
+/* 오른쪽 위 ☰ 와 겹치지 않게 상단 바 오른쪽을 비운다 */
+.topbar { padding-right: 52px; }
+.screen.home { padding-top: 52px; }
+.doc { display: grid; gap: 10px; font: var(--fs-body); padding-bottom: 32px; }
+.doc h2 { font: var(--fs-heading); margin: 14px 0 0; }
+.doc ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.doc-table { width: 100%; border-collapse: collapse; font: var(--fs-small); }
+.doc-table th, .doc-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+.doc-table th { background: var(--surface); }

@@ -16,6 +16,10 @@ run_worker_first = ["/api/*"]
 [observability]
 enabled = true
 
+# 요청 주소(주소 검색어 등)가 기록되지 않도록 자동 요청 기록은 끄고, 코드가 남기는 한 줄 로그만 보관한다 (ADR-033)
+[observability.logs]
+invocation_logs = false
+
 # 비밀값은 여기 적지 말고 아래 명령으로 등록한다 (로컬은 .dev.vars):
 #   npx wrangler secret put BUS_API_KEY
 #   npx wrangler secret put NCP_KEY_ID
