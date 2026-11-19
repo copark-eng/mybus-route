@@ -43,7 +43,7 @@ describe("/api/bus-locations", () => {
     expect(body.map((b: { stationSeq: number }) => b.stationSeq)).toEqual([5, 40]);
     expect(body[0]).toEqual({ plateNo: "경기70아7084", stationSeq: 5, stationId: "206000222", stateCd: 2, lowPlate: 0, crowded: null, remainSeat: 12 });
     expect(body[1].remainSeat).toBeNull();
-    expect(r.headers.get("Cache-Control")).toBe("public, max-age=15");
+    expect(r.headers.get("Cache-Control")).toBe("public, max-age=8");
     const u = new URL(String(upstream.mock.calls[0][0]));
     expect(u.searchParams.get("routeId")).toBe("241222005");
     expect(u.searchParams.get("serviceKey")).toBe("TEST+KEY"); // Encoding 키 디코딩
@@ -60,7 +60,7 @@ describe("/api/bus-locations", () => {
     expect(await (await call("/api/bus-locations?routeId=241222005")).json()).toEqual([]);
   });
 
-  it("15초 캐시: 두 번째 요청은 상위를 다시 부르지 않는다", async () => {
+  it("8초 캐시: 두 번째 요청은 상위를 다시 부르지 않는다", async () => {
     upstream.mockImplementation(async () => ok(sample));
     await call("/api/bus-locations?routeId=241222005");
     await call("/api/bus-locations?routeId=241222005");

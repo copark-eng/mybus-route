@@ -1,12 +1,12 @@
 /**
  * 노선의 운행 중인 버스 위치 (ADR-028)
  *   GET /api/bus-locations?routeId=241222005
- * data.go.kr 경기도_버스위치정보 조회(getBusLocationListv2). 15초 캐시, 6초 타임아웃.
+ * data.go.kr 경기도_버스위치정보 조회(getBusLocationListv2). 8초 캐시, 6초 타임아웃.
  */
 import { cacheGet, cachePut, json } from "./http";
 
 const URL_BASE = "https://apis.data.go.kr/6410000/buslocationservice/v2/getBusLocationListv2";
-const TTL_SEC = 15;
+const TTL_SEC = 8; // 화면은 10초마다 갱신 (ADR-031)
 const TIMEOUT_MS = 6_000;
 
 export interface BusLocation {

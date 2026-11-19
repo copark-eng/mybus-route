@@ -293,3 +293,35 @@ button.card:hover { background: var(--surface-2); }
 .chip-btn:disabled { opacity: .6; cursor: default; }
 .chip-btn.is-on { border-color: var(--accent); background: var(--accent-weak); color: var(--accent); font-weight: 600; }
 .chip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- 노선도: 상행·하행 좌우 배치 + 정류장 사이 버스 (ADR-031) ---- */
+.route-note { margin: 4px 0 12px; }
+.route-lines { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.route-col { min-width: 0; }
+.route-col-title {
+  position: sticky; top: 0; z-index: 2; margin: 0 0 4px; padding: 8px 0;
+  font: var(--fs-small); font-weight: 700; background: var(--bg); word-break: keep-all;
+}
+.route-col .stop-name { font: var(--fs-small); word-break: keep-all; }
+.route-col .stop { min-height: 34px; gap: 8px; }
+.route-col .stop-body { padding: 6px 0; }
+.route-line .gap { position: relative; height: 8px; margin-left: 0; }
+.route-line .gap.has-transit { height: 64px; }
+.route-line .gap-rail { position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+.route-line .gap.has-transit .gap-rail { background: var(--accent); opacity: .35; }
+.bus-transit {
+  position: absolute; left: -4px; right: 0; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 4px; transition: top 1s linear; z-index: 1;
+}
+.bus-transit-icon {
+  flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px;
+  background: var(--bg); border: 2px solid var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+.bus-transit-text {
+  min-width: 0; padding: 1px 6px; border-radius: 999px; background: var(--accent-weak);
+  font: var(--fs-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.route-col .bus-chip { font: var(--fs-caption); }
+@media (min-width: 768px) {
+  .route-col .stop-name { font: var(--fs-body); }
+}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Nav, RouteView } from "../App";
+import { NaverMap } from "../components/features/NaverMap";
 import { RefreshStatus } from "../components/features/RefreshStatus";
 import { RouteBadge } from "../components/features/RouteBadge";
 import { EmptyState, IconButton } from "../components/ui";
@@ -7,16 +8,20 @@ import { useDb } from "../context";
 import { useArrivalsRefresh } from "../hooks/useArrivalsRefresh";
 import { useCountdown } from "../hooks/useCountdown";
 import { useVisible } from "../hooks/useVisible";
-import { NaverMap } from "../components/features/NaverMap";
 import { type BusLocation, fetchBusLocations } from "../lib/api";
+import { pointAlong, progressOf, segmentLength, type Track, updateTracks } from "../lib/busProgress";
 import type { Route } from "../lib/data";
-import { busPoint, loadShape, type Shape } from "../lib/shapes";
+import { loadShape, type Shape } from "../lib/shapes";
 
-const REFRESH_MS = 15_000;
+/** 버스 위치 갱신 주기 (ADR-031) */
+const REFRESH_MS = 10_000;
+
+/** 화면에 그릴 버스 하나: 정류장 index 와 다음 정류장까지 진행률 */
+interface BusView { bus: BusLocation; index: number; progress: number; key: string }
 
 /**
- * 노선 정보 화면 (ADR-028): 기점·종점, 운행시간, 배차, 운수회사, 운행 중 버스 수 +
- * 상행(기점→종점)·하행(종점→기점) 정류장 목록 위에 지금 버스가 있는 곳을 표시한다.
+ * 노선 정보 화면 (ADR-028, ADR-031): 기점·종점, 운행시간, 배차, 운수회사, 운행 중 버스 수 +
+ * 상행(기점→종점)·하행(종점→기점)을 좌우로 나란히 놓은 노선도, 정류장 사이에서 움직이는 버스.
  */
 export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
   const db = useDb();
@@ -25,10 +30,12 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
   const now = useCountdown();
   const [buses, setBuses] = useState<BusLocation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const tracks = useRef(new Map<string, Track>());
 
   const task = useCallback(async () => {
     try {
       const list = await fetchBusLocations(view.routeId);
+      tracks.current = updateTracks(tracks.current, list, Date.now());
       setBuses(list);
       setError(null);
     } catch (e) {
@@ -37,20 +44,38 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
   }, [view.routeId]);
   const refresh = useArrivalsRefresh(task, !!route && visible, REFRESH_MS);
 
-  // 지도용: 노선 형상(도로 선)을 받아 두고, 버스를 도로 위에 놓는다 (ADR-029)
+  // 노선 형상(도로 선): 지도 선, 정류장 사이 거리, 버스 위치에 쓴다 (ADR-029)
   const [shape, setShape] = useState<Shape | null>(null);
   useEffect(() => {
     let alive = true;
     loadShape(view.routeId).then((s) => { if (alive) setShape(s); });
     return () => { alive = false; };
   }, [view.routeId]);
-  const busMarkers = useMemo(() => {
-    if (!route || !buses) return [];
-    return buses.flatMap((b) => {
-      const p = busPoint(db, route, shape, b.stationSeq - 1, b.stateCd);
-      return p ? [{ lat: p[0], lng: p[1], label: `${route.name}번 ${b.plateNo ?? ""}` }] : [];
+
+  // 정류장 사이 거리는 노선·형상이 정해지면 한 번만 계산
+  const segLens = useMemo(
+    () => (route ? route.stops.map((_, i) => segmentLength(db, route, shape, i)) : []),
+    [db, route, shape],
+  );
+
+  // 1초마다 진행률을 다시 계산해 버스가 조금씩 다음 정류장 쪽으로 움직이게 한다
+  const views: BusView[] = useMemo(() => {
+    if (!buses) return [];
+    return buses.map((bus, n) => {
+      const key = bus.plateNo ?? `#${n}`;
+      const index = bus.stationSeq - 1;
+      const t = tracks.current.get(key) ?? { seq: bus.stationSeq, state: bus.stateCd, since: now };
+      return { bus, index, key, progress: progressOf(t, segLens[index] ?? 0, now) };
     });
-  }, [db, route, shape, buses]);
+  }, [buses, segLens, now]);
+
+  const busMarkers = useMemo(() => {
+    if (!route) return [];
+    return views.flatMap((v) => {
+      const p = pointAlong(db, route, shape, v.index, v.progress);
+      return p ? [{ lat: p[0], lng: p[1], label: `${route.name}번 ${v.bus.plateNo ?? ""}` }] : [];
+    });
+  }, [db, route, shape, views]);
   const mark = view.stationId ? db.stations.get(view.stationId) : undefined;
   const markPlace = mark ? { kind: "station" as const, stationId: mark.id, label: mark.name, lat: mark.y, lng: mark.x } : null;
 
@@ -73,10 +98,13 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
         <h1 className="topbar-title">{route.name}번 노선</h1>
       </header>
       <RouteInfo route={route} buses={buses} failed={!!error && buses === null} />
-      <RefreshStatus lastUpdated={refresh.lastRun} loading={refresh.running} now={now} error={error} onRefresh={() => void refresh.runNow()} />
+      <RefreshStatus lastUpdated={refresh.lastRun} loading={refresh.running} now={now} error={error} onRefresh={() => void refresh.runNow()} intervalMs={REFRESH_MS} />
       {error && <p className="msg small" data-testid="route-error">버스 위치를 불러오지 못했습니다: {error}</p>}
       <NaverMap from={markPlace} to={null} line={route} buses={busMarkers} className="map-route" />
-      <RouteLine route={route} buses={buses ?? []} highlight={view.stationId} />
+      <p className="muted small route-note">
+        버스 위치는 10초마다 갱신하고, 정류장 사이에서는 도로 거리와 평균 속도로 대략 어디쯤인지 보여 줍니다.
+      </p>
+      <RouteLine route={route} views={views} segLens={segLens} highlight={view.stationId} />
     </main>
   );
 }
@@ -132,36 +160,68 @@ function RouteInfo({ route, buses, failed }: { route: Route; buses: BusLocation[
   );
 }
 
-const STATE = ["교차로 통과", "정류장 도착", "정류장 출발"];
 const CROWD = ["", "여유", "보통", "혼잡", "매우혼잡"];
 
-function BusChip({ bus }: { bus: BusLocation }) {
-  const extra = [
+function busExtra(bus: BusLocation): string {
+  return [
     bus.lowPlate === 1 ? "저상" : bus.lowPlate === 2 ? "2층" : null,
     bus.crowded ? CROWD[bus.crowded] : null,
     bus.remainSeat !== null ? `빈자리 ${bus.remainSeat}` : null,
-  ].filter(Boolean);
+  ].filter(Boolean).join(" · ");
+}
+
+const plate = (b: BusLocation) => b.plateNo?.replace(/^경기/, "") ?? "버스";
+
+/** 정류장에 도착해 있는 버스 */
+function BusAtStop({ bus }: { bus: BusLocation }) {
+  const extra = busExtra(bus);
   return (
     <span className="bus-chip" data-testid="bus-chip">
       <span aria-hidden>🚌</span>
-      <span className="num">{bus.plateNo?.replace(/^경기/, "") ?? "버스"}</span>
-      {bus.stateCd !== null && <span className="muted">{STATE[bus.stateCd] ?? ""}</span>}
-      {extra.length > 0 && <span className="muted">· {extra.join(" · ")}</span>}
+      <span className="num">{plate(bus)}</span>
+      <span className="muted">도착{extra && ` · ${extra}`}</span>
     </span>
   );
 }
 
-function RouteLine({ route, buses, highlight }: { route: Route; buses: BusLocation[]; highlight?: string }) {
+/** 정류장 사이를 달리는 버스: 세로 레일 위 진행률 위치에 놓는다 */
+function BusInTransit({ v, segLen }: { v: BusView; segLen: number }) {
+  const left = Math.max(0, Math.round(segLen * (1 - v.progress)));
+  const extra = busExtra(v.bus);
+  return (
+    <span
+      className="bus-transit"
+      style={{ top: `${Math.round(v.progress * 100)}%` }}
+      data-testid="bus-transit"
+      title={`${plate(v.bus)} · 다음 정류장까지 약 ${left}m`}
+    >
+      <span className="bus-transit-icon" aria-hidden>🚌</span>
+      <span className="bus-transit-text">
+        <span className="num">{plate(v.bus)}</span>
+        <span className="muted"> · 다음까지 약 {left >= 1000 ? `${(left / 1000).toFixed(1)}km` : `${left}m`}{extra && ` · ${extra}`}</span>
+      </span>
+    </span>
+  );
+}
+
+function RouteLine({ route, views, segLens, highlight }: {
+  route: Route;
+  views: BusView[];
+  segLens: number[];
+  highlight?: string;
+}) {
   const db = useDb();
   const { turn, last } = endpoints(route);
-  const busesAt = useMemo(() => {
-    const m = new Map<number, BusLocation[]>();
-    for (const b of buses) {
-      const i = b.stationSeq - 1;
-      m.set(i, [...(m.get(i) ?? []), b]);
+  const at = useMemo(() => {
+    const atStop = new Map<number, BusView[]>();
+    const between = new Map<number, BusView[]>();
+    for (const v of views) {
+      const m = v.progress > 0 && v.index < last ? between : atStop;
+      m.set(v.index, [...(m.get(v.index) ?? []), v]);
     }
-    return m;
-  }, [buses]);
+    return { atStop, between };
+  }, [views, last]);
+
   const mark = useRef<HTMLLIElement>(null);
   const scrolled = useRef(false);
   useEffect(() => {
@@ -175,18 +235,19 @@ function RouteLine({ route, buses, highlight }: { route: Route; buses: BusLocati
   // 강조할 정류장: 같은 정류장이 왕복으로 두 번 나오면 첫 번째
   const highlightIndex = highlight ? route.stops.indexOf(highlight) : -1;
 
-  const section = (from: number, to: number, title: string, key: string) => (
-    <section className="section" aria-label={title} key={key}>
-      <h2 className="section-title">{title}</h2>
+  const column = (from: number, to: number, title: string, key: string) => (
+    <section className="route-col" aria-label={title} key={key} data-testid={`route-col-${key}`}>
+      <h2 className="route-col-title">{title}</h2>
       <ol className="route-line">
-        {route.stops.slice(from, to + 1).map((id, k) => {
+        {route.stops.slice(from, to + 1).flatMap((id, k) => {
           const i = from + k;
           const st = db.stations.get(id);
-          const here = busesAt.get(i) ?? [];
+          const here = at.atStop.get(i) ?? [];
+          const moving = i < to ? at.between.get(i) ?? [] : [];
           const isMark = i === highlightIndex;
-          return (
+          const items = [
             <li
-              key={`${i}-${id}`}
+              key={`s${i}`}
               ref={isMark ? mark : undefined}
               className={`stop${here.length ? " has-bus" : ""}${isMark ? " is-mark" : ""}${!st?.no ? " is-virtual" : ""}`}
               data-testid="route-stop"
@@ -199,10 +260,20 @@ function RouteLine({ route, buses, highlight }: { route: Route; buses: BusLocati
                   {i === turn && <span className="tag">회차</span>}
                   {isMark && <span className="tag tag-mark">내 정류장</span>}
                 </span>
-                {here.map((b, n) => <BusChip key={`${b.plateNo ?? n}`} bus={b} />)}
+                {here.map((v) => <BusAtStop key={v.key} bus={v.bus} />)}
               </span>
-            </li>
-          );
+            </li>,
+          ];
+          // 정류장 사이 칸: 달리는 버스가 있을 때만 높게 그린다
+          if (i < to) {
+            items.push(
+              <li key={`g${i}`} className={`gap${moving.length ? " has-transit" : ""}`} aria-hidden={!moving.length}>
+                <span className="gap-rail" />
+                {moving.map((v) => <BusInTransit key={v.key} v={v} segLen={segLens[i] ?? 0} />)}
+              </li>,
+            );
+          }
+          return items;
         })}
       </ol>
     </section>
@@ -210,8 +281,8 @@ function RouteLine({ route, buses, highlight }: { route: Route; buses: BusLocati
 
   return (
     <div className="route-lines" data-testid="route-line">
-      {section(0, turn, `${name(0)} → ${name(turn)}`, "up")}
-      {turn < last && section(turn + 1, last, `${name(turn)} → ${name(last)}`, "down")}
+      {column(0, turn, `${name(0)} → ${name(turn)}`, "up")}
+      {turn < last && column(turn + 1, last, `${name(turn)} → ${name(last)}`, "down")}
     </div>
   );
 }
