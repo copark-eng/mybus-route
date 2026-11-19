@@ -6,7 +6,7 @@ export interface Station {
   name: string;
   x: number; // 경도
   y: number; // 위도
-  sel?: 1; // 성남시 정류장 = 출발지·도착지로 고를 수 있음 (ADR-010)
+  sel?: 1; // 경기도 정류장 = 출발지·도착지·환승으로 고를 수 있음 (ADR-027)
 }
 
 export interface Route {
@@ -44,8 +44,30 @@ export async function loadDb(): Promise<BusDb> {
     fetch(`${base}data/stations.json`).then((res) => res.json()),
     fetch(`${base}data/routes.json`).then((res) => res.json()),
   ]);
-  const stations = new Map<string, Station>((s.stations as Station[]).map((st) => [st.id, st]));
-  const routes = new Map<string, Route>((r.routes as Route[]).map((rt) => [rt.id, rt]));
+  return buildDb(s, r);
+}
+
+/** stations.json / routes.json 를 메모리 DB 로. v2(행 배열, ADR-027)와 v1(객체 배열) 둘 다 읽는다 */
+export function buildDb(s: any, r: any): BusDb {
+  let stationList: Station[];
+  let routeList: Route[];
+  if (s.v === 2) {
+    // [id, no, name, x, y, sel] — routes 의 stops 는 이 배열의 인덱스
+    stationList = (s.rows as [string, string, string, number, number, number][]).map(([id, no, name, x, y, sel]) =>
+      sel ? { id, no, name, x, y, sel: 1 as const } : { id, no, name, x, y },
+    );
+    routeList = (r.rows as [string, string, string, number | null, number | null, string, string, number, number[]][]).map(
+      ([id, name, type, peek, npeek, first, last, turn, stops]) => ({
+        id, name, type, peek, npeek, first, last, turn,
+        stops: stops.map((i) => stationList[i].id),
+      }),
+    );
+  } else {
+    stationList = s.stations as Station[];
+    routeList = r.routes as Route[];
+  }
+  const stations = new Map<string, Station>(stationList.map((st) => [st.id, st]));
+  const routes = new Map<string, Route>(routeList.map((rt) => [rt.id, rt]));
   const stopRefs = new Map<string, StopRef[]>();
   for (const route of routes.values()) {
     route.stops.forEach((id, index) => {

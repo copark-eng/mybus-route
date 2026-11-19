@@ -1,22 +1,35 @@
 /**
- * 정류장·노선 DB 수집 (ADR-006, ADR-010, ADR-016)
+ * 정류장·노선 DB 수집 (ADR-027: 경기도 버스기반정보 파일, ADR-016: 매주 갱신)
  *
  *   node scripts/build-db.ts
  *
- * 성남시 정류장에서 시작해 "정류장 → 경유 노선 → 노선의 정류장 순서"를 따라가며 모은다.
- * API 응답은 scripts/.cache 에 저장하므로 일일 호출 한도에 걸려 중단돼도 다시 실행하면 이어서 진행한다.
- * 결과: web/public/data/stations.json, web/public/data/routes.json
+ * 1. data.go.kr 경기도_버스기반정보 조회(getBaseInfoItemv2)로 오늘자 파일 주소를 받는다 (API 호출 1번)
+ * 2. 정류소·노선·노선-정류소 파일을 내려받는다 (레코드 구분 "^", 필드 구분 "|", UTF-8)
+ * 3. 웹이 바로 쓸 수 있는 압축 JSON(v2)으로 만든다 → web/public/data/stations.json, routes.json
  */
 import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const CACHE = path.join(ROOT, "scripts", ".cache");
+const CACHE = path.join(ROOT, "scripts", ".cache", "baseinfo");
 const OUT = path.join(ROOT, "web", "public", "data");
-const BASE = "https://apis.data.go.kr/6410000";
-const REGION = "성남"; // ADR-010
-const SEEDS = ["206000004", "206000080", "206000531"]; // 판교·서현·백현
-const CONCURRENCY = 4;
+const BASEINFO_URL = "https://apis.data.go.kr/6410000/baseinfoservice/v2/getBaseInfoItemv2";
+
+/** 출발지·도착지·환승으로 고를 수 있는 지역 = 경기도 31개 시군 (ADR-027). 그 밖(서울·인천 등)은 노선 경로로만 쓴다 */
+const GYEONGGI = new Set([
+  "수원", "성남", "고양", "용인", "부천", "안산", "안양", "남양주", "화성", "평택", "의정부", "시흥", "파주", "김포",
+  "광명", "광주", "군포", "하남", "오산", "이천", "안성", "의왕", "양주", "구리", "포천", "동두천", "과천", "여주",
+  "양평", "가평", "연천",
+]);
+const isGyeonggi = (region: string) => GYEONGGI.has(region) || [...GYEONGGI].some((g) => region.startsWith(g + "시"));
+
+/** 노선유형코드 → 이름 (GBIS 기반정보 명세) */
+const ROUTE_TYPES: Record<string, string> = {
+  "11": "직행좌석형시내버스", "12": "좌석형시내버스", "13": "일반형시내버스", "14": "광역급행형시내버스",
+  "15": "따복형시내버스", "16": "경기순환버스", "21": "직행좌석형농어촌버스", "22": "좌석형농어촌버스",
+  "23": "일반형농어촌버스", "30": "마을버스", "41": "고속형시외버스", "42": "좌석형시외버스", "43": "일반형시외버스",
+  "51": "리무진공항버스", "52": "좌석형공항버스", "53": "일반형공항버스",
+};
 
 function loadKey(): string {
   if (process.env.BUS_API_KEY) return process.env.BUS_API_KEY;
@@ -25,183 +38,145 @@ function loadKey(): string {
   if (!m?.[1]) throw new Error("BUS_API_KEY 가 없습니다 (환경변수 또는 worker/.dev.vars)");
   return m[1].trim();
 }
-const KEY = decodeURIComponent(loadKey());
 
-class LimitError extends Error {}
-let apiCalls = 0;
+type Rec = Record<string, string>;
 
-async function api(kind: string, endpoint: string, params: Record<string, string>): Promise<any> {
-  const file = path.join(CACHE, `${kind}-${Object.values(params).join("_")}.json`);
-  if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, "utf8"));
-
-  const url = new URL(`${BASE}/${endpoint}`);
-  url.searchParams.set("serviceKey", KEY);
-  url.searchParams.set("format", "json");
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-
-  for (let attempt = 1; ; attempt++) {
-    await throttle();
-    apiCalls++;
-    const res = await fetch(url);
-    const text = await res.text();
-    // 초당 호출 제한: 잠시 쉬었다가 다시 시도한다.
-    if (/PER_SECOND/i.test(text)) {
-      if (attempt < 8) { await sleep(500 * attempt); continue; }
-      throw new Error(`${endpoint}: 초당 호출 제한이 계속됩니다`);
-    }
-    // 일일 호출 제한: 중단하고 다음 날 이어서 수집한다.
-    if (/LIMITED_NUMBER_OF_SERVICE_REQUESTS/i.test(text)) throw new LimitError(text.slice(0, 200));
-    if (!res.ok) {
-      if (attempt < 3) { await sleep(1000 * attempt); continue; }
-      throw new Error(`${endpoint} ${res.status}: ${text.slice(0, 200)}`);
-    }
-    const body = JSON.parse(text);
-    const code = Number(body?.response?.msgHeader?.resultCode ?? 0);
-    if (code !== 0 && code !== 4) {
-      if (attempt < 3) { await sleep(1000 * attempt); continue; }
-      throw new Error(`${endpoint} resultCode ${code}: ${body?.response?.msgHeader?.resultMessage}`);
-    }
-    const msgBody = body?.response?.msgBody ?? {};
-    fs.writeFileSync(file, JSON.stringify(msgBody));
-    return msgBody;
-  }
-}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/** 모든 API 호출 사이에 최소 간격을 둔다 (data.go.kr 초당 호출 제한). */
-const MIN_INTERVAL_MS = 150;
-let nextSlot = 0;
-async function throttle() {
-  const now = Date.now();
-  const wait = Math.max(0, nextSlot - now);
-  nextSlot = Math.max(now, nextSlot) + MIN_INTERVAL_MS;
-  if (wait) await sleep(wait);
-}
-const list = (v: unknown): any[] => (!v ? [] : Array.isArray(v) ? v : [v]);
-const str = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
-
-// ---------- 수집 ----------
-
-interface StationRec { id: string; no: string; name: string; x: number; y: number; region: string }
-interface RouteRec {
-  id: string; name: string; type: string; region: string;
-  peek: number | null; npeek: number | null; first: string; last: string;
-  turn: number; stops: string[];
-}
-
-const stations = new Map<string, StationRec>();
-const routes = new Map<string, RouteRec>();
-const queuedStations = new Set<string>();
-const queuedRoutes = new Set<string>();
-const stationQueue: string[] = [...SEEDS];
-SEEDS.forEach((s) => queuedStations.add(s));
-
-async function processStation(stationId: string) {
-  const body = await api("via", "busstationservice/v2/getBusStationViaRouteListv2", { stationId });
-  for (const r of list(body.busRouteList)) {
-    const id = str(r.routeId);
-    if (id && !queuedRoutes.has(id)) {
-      queuedRoutes.add(id);
-      await processRoute(id, { name: str(r.routeName), type: str(r.routeTypeName), region: str(r.regionName) });
-    }
-  }
-}
-
-/** fallback: 서울 노선 등은 경기도 노선정보 API 가 비어 있어 경유노선 목록의 이름·종류를 쓴다. */
-async function processRoute(routeId: string, fallback: { name: string; type: string; region: string }) {
-  const [stBody, infoBody] = await Promise.all([
-    api("route-stations", "busrouteservice/v2/getBusRouteStationListv2", { routeId }),
-    api("route-info", "busrouteservice/v2/getBusRouteInfoItemv2", { routeId }),
-  ]);
-  const info = infoBody.busRouteInfoItem ?? {};
-  const seq = list(stBody.busRouteStationList).sort((a, b) => Number(a.stationSeq) - Number(b.stationSeq));
-  const stops: string[] = [];
-  let turn = -1;
-  for (const s of seq) {
-    const id = str(s.stationId);
-    stops.push(id);
-    if (str(s.turnYn) === "Y" && turn < 0) turn = stops.length - 1;
-    if (!stations.has(id)) {
-      stations.set(id, {
-        id,
-        no: str(s.mobileNo),
-        name: str(s.stationName),
-        x: Number(s.x),
-        y: Number(s.y),
-        region: str(s.regionName),
-      });
-    }
-    if (str(s.regionName) === REGION && str(s.mobileNo) && !queuedStations.has(id)) {
-      queuedStations.add(id);
-      stationQueue.push(id);
-    }
-  }
-  routes.set(routeId, {
-    id: routeId,
-    name: str(info.routeName) || fallback.name,
-    type: str(info.routeTypeName) || fallback.type,
-    region: str(info.regionName) || fallback.region,
-    peek: Number(info.peekAlloc) || null,
-    npeek: Number(info.nPeekAlloc) || null,
-    first: str(info.upFirstTime),
-    last: str(info.upLastTime),
-    turn: turn >= 0 ? turn : Number(seq.find((s) => s.turnSeq)?.turnSeq ?? 0) - 1,
-    stops,
+/** "^" 로 레코드, "|" 로 필드를 나눈 파일 → 객체 배열 (첫 레코드가 헤더) */
+export function parseBaseInfo(text: string): Rec[] {
+  const rows = text.replace(/^﻿/, "").split("^").map((r) => r.replace(/[\r\n]+$/g, "")).filter((r) => r.trim());
+  const head = rows.shift()?.split("|") ?? [];
+  return rows.map((r) => {
+    const cols = r.split("|");
+    const o: Rec = {};
+    head.forEach((h, i) => { o[h.trim()] = (cols[i] ?? "").trim(); });
+    return o;
   });
 }
+
+async function fileUrls(): Promise<{ version: string; station: string; route: string; routeStation: string }> {
+  const u = new URL(BASEINFO_URL);
+  u.searchParams.set("serviceKey", decodeURIComponent(loadKey()));
+  u.searchParams.set("format", "json");
+  const res = await fetch(u);
+  const text = await res.text();
+  if (!res.ok) throw new Error(`기반정보 조회 ${res.status}: ${text.slice(0, 200)}`);
+  const item = JSON.parse(text)?.response?.msgBody?.baseInfoItem;
+  if (!item?.stationDownloadUrl) throw new Error(`기반정보 응답에 파일 주소가 없습니다: ${text.slice(0, 200)}`);
+  return {
+    version: String(item.stationVersion),
+    station: item.stationDownloadUrl,
+    route: item.routeDownloadUrl,
+    routeStation: item.routeStationDownloadUrl,
+  };
+}
+
+/** 같은 버전 파일은 다시 받지 않는다 */
+async function download(url: string, name: string): Promise<string> {
+  const file = path.join(CACHE, name);
+  if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${name} 다운로드 실패 ${res.status}`);
+  const text = Buffer.from(await res.arrayBuffer()).toString("utf8");
+  fs.writeFileSync(file, text);
+  return text;
+}
+
+const num = (v: string) => (v && !Number.isNaN(Number(v)) ? Number(v) : null);
+const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
 async function main() {
   fs.mkdirSync(CACHE, { recursive: true });
   fs.mkdirSync(OUT, { recursive: true });
-  let done = 0;
-  let stopped: string | null = null;
 
-  const worker = async () => {
-    while (stationQueue.length && !stopped) {
-      const id = stationQueue.shift()!;
-      try {
-        await processStation(id);
-      } catch (e) {
-        if (e instanceof LimitError) { stopped = "일일 호출 한도 초과"; break; }
-        console.warn(`정류장 ${id} 처리 실패: ${(e as Error).message}`);
-      }
-      if (++done % 100 === 0) {
-        console.log(`정류장 ${done}곳 처리, 대기 ${stationQueue.length}, 노선 ${routes.size}, API 호출 ${apiCalls}`);
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  const urls = await fileUrls();
+  console.log(`기반정보 버전 ${urls.version}`);
+  const [stText, rtText, rsText] = await Promise.all([
+    download(urls.station, `station${urls.version}.txt`),
+    download(urls.route, `route${urls.version}.txt`),
+    download(urls.routeStation, `routestation${urls.version}.txt`),
+  ]);
+  const stationRows = parseBaseInfo(stText);
+  const routeRows = parseBaseInfo(rtText);
+  const routeStationRows = parseBaseInfo(rsText);
 
-  // ---------- 출력 ----------
-  // 한도에 걸려 중단돼도 지금까지 모은 것으로 파일을 만든다 (partial 표시). 다시 실행하면 이어서 채운다.
-  // 노선에 쓰이는 모든 정류장(성남 밖 포함)을 저장하고, 성남 정류장은 sel=1 로 표시(선택·검색 대상).
-  const routeOut = [...routes.values()]
-    .filter((r) => r.stops.length >= 2)
-    .sort((a, b) => a.name.localeCompare(b.name, "ko", { numeric: true }));
-  const usedStations = new Set(routeOut.flatMap((r) => r.stops));
-  const stationOut = [...stations.values()]
-    .filter((s) => usedStations.has(s.id))
-    .map((s) => ({
-      id: s.id,
-      no: s.no,
-      name: s.name,
-      x: Math.round(s.x * 1e6) / 1e6,
-      y: Math.round(s.y * 1e6) / 1e6,
-      ...(s.region === REGION && s.no ? { sel: 1 } : {}),
-    }));
-
-  const updatedAt = new Date().toISOString();
-  const partial = stopped ? { partial: true, pendingStations: stationQueue.length } : {};
-  fs.writeFileSync(path.join(OUT, "stations.json"), JSON.stringify({ updatedAt, region: REGION, ...partial, stations: stationOut }));
-  fs.writeFileSync(path.join(OUT, "routes.json"), JSON.stringify({ updatedAt, ...partial, routes: routeOut }));
-
-  const sel = stationOut.filter((s) => "sel" in s).length;
-  console.log(`\n노선 ${routeOut.length}개, 정류장 ${stationOut.length}곳 (성남 선택 가능 ${sel}곳), 이번 API 호출 ${apiCalls}회`);
-  if (stopped) {
-    console.error(`일부만 수집됨: ${stopped}. 남은 정류장 ${stationQueue.length}곳 — 내일 다시 실행하면 이어서 수집합니다.`);
-    process.exit(2);
+  // 노선별 정류장 순서 (상행 → 하행, staOrder 순)
+  const seqByRoute = new Map<string, { order: number; stationId: string }[]>();
+  for (const r of routeStationRows) {
+    const list = seqByRoute.get(r.routeId) ?? [];
+    list.push({ order: Number(r.staOrder), stationId: r.stationId });
+    seqByRoute.set(r.routeId, list);
   }
+
+  // 노선에 쓰이는 정류장만 내보낸다
+  const used = new Set(routeStationRows.map((r) => r.stationId));
+  const stationList = stationRows
+    .filter((s) => used.has(s.stationId) && num(s.x) !== null && num(s.y) !== null)
+    .sort((a, b) => a.stationId.localeCompare(b.stationId));
+  const index = new Map(stationList.map((s, i) => [s.stationId, i]));
+
+  // stations.json v2: 열 이름 + 행 배열 (객체 키 반복을 없애 크기를 줄인다)
+  const stationsOut = {
+    v: 2,
+    updatedAt: new Date().toISOString(),
+    version: urls.version,
+    region: "경기도",
+    cols: ["id", "no", "name", "x", "y", "sel"],
+    rows: stationList.map((s) => [
+      s.stationId,
+      s.mobileNo,
+      s.stationName,
+      round6(Number(s.x)),
+      round6(Number(s.y)),
+      isGyeonggi(s.regionName) && s.mobileNo ? 1 : 0,
+    ]),
+  };
+
+  // routes.json v2: 정류장은 stations.rows 의 인덱스로
+  const routeOut: unknown[] = [];
+  let skipped = 0;
+  for (const r of routeRows.sort((a, b) => a.routeName.localeCompare(b.routeName, "ko", { numeric: true }))) {
+    const seq = (seqByRoute.get(r.routeId) ?? []).sort((a, b) => a.order - b.order);
+    const stops = seq.map((s) => index.get(s.stationId)).filter((i): i is number => i !== undefined);
+    if (stops.length < 2) { skipped++; continue; }
+    const turn = num(r.turnSeq);
+    routeOut.push([
+      r.routeId,
+      r.routeName,
+      ROUTE_TYPES[r.routeTypeCd] ?? "기타",
+      num(r.peekAlloc),
+      num(r.npeekAlloc),
+      r.upFirstTime,
+      r.upLastTime,
+      turn !== null ? turn - 1 : -1,
+      stops,
+    ]);
+  }
+  const routesOut = {
+    v: 2,
+    updatedAt: stationsOut.updatedAt,
+    version: urls.version,
+    cols: ["id", "name", "type", "peek", "npeek", "first", "last", "turn", "stops"],
+    rows: routeOut,
+  };
+
+  // 비정상적으로 작으면 기존 파일을 지킨다 (ADR-016)
+  const prev = path.join(OUT, "stations.json");
+  if (fs.existsSync(prev)) {
+    const old = JSON.parse(fs.readFileSync(prev, "utf8"));
+    const oldCount = old.rows?.length ?? old.stations?.length ?? 0;
+    if (oldCount > 0 && stationsOut.rows.length < oldCount * 0.8) {
+      throw new Error(`정류장 수가 ${oldCount} → ${stationsOut.rows.length} 로 20% 넘게 줄었습니다. 기존 파일을 유지합니다.`);
+    }
+  }
+
+  fs.writeFileSync(path.join(OUT, "stations.json"), JSON.stringify(stationsOut));
+  fs.writeFileSync(path.join(OUT, "routes.json"), JSON.stringify(routesOut));
+  const sel = stationsOut.rows.filter((r) => r[5] === 1).length;
+  const kb = (f: string) => Math.round(fs.statSync(path.join(OUT, f)).size / 1024);
+  console.log(
+    `노선 ${routeOut.length}개 (정류장 2곳 미만 ${skipped}개 제외), 정류장 ${stationsOut.rows.length}곳 (경기도 선택 가능 ${sel}곳)\n` +
+      `stations.json ${kb("stations.json")}KB, routes.json ${kb("routes.json")}KB`,
+  );
 }
 
 main().catch((e) => {

@@ -4,7 +4,7 @@ export const config = {
   apiBase: "/api",
   /** 실시간 정보 자동 갱신 주기 (ADR-015) */
   refreshMs: 30_000,
-  /** 지도 초기 중심: 성남시 (ADR-010) */
+  /** 지도 초기 중심: 성남시 (기본 위치) */
   initialCenter: { lat: 37.3947, lng: 127.1112 },
   /** 날씨 기본 위치: 성남시청 (ADR-026). 출발지·도착지를 고르면 그 위치를 쓴다 */
   weatherDefault: { lat: 37.4200, lng: 127.1267 },

@@ -1,6 +1,6 @@
 # mybus-route
 
-출발지와 도착지를 고르면 경기도(성남시) 버스 실시간 정보로 가장 빨리 도착하는 경로(직행 / 1회 환승)를 추천하는 웹서비스입니다.
+출발지와 도착지를 고르면 경기도 버스 실시간 정보로 가장 빨리 도착하는 경로(직행 / 1회 환승)를 추천하는 웹서비스입니다.
 
 - 요구사항: [doc/requirements.md](doc/requirements.md)
 - 결정 기록(ADR): [doc/adr.md](doc/adr.md)
@@ -37,8 +37,9 @@ npm run dev:web                                # http://localhost:5173  (/api �
 ```
 npm run build:db      # worker/.dev.vars 의 BUS_API_KEY 사용 → web/public/data/*.json
 ```
-- 성남시 정류장에서 시작해 경유 노선 → 노선의 정류장 순서를 따라가며 모읍니다 ([ADR-006](doc/adr.md#adr-006)).
-- data.go.kr 개발계정은 정류소 조회가 **하루 약 1,000건**이라 한 번에 다 못 모읍니다. 응답은 `scripts/.cache`에 저장되므로 다음 날 다시 실행하면 이어서 수집합니다. 덜 끝난 경우 데이터에 `partial` 표시가 붙고 화면 아래에 "일부 정류장 수집 중"이 보입니다.
+- 경기도 버스기반정보 서비스로 그날의 정류소·노선·노선-정류소 파일 주소를 받아(API 1번) 내려받고, 웹용 압축 JSON(v2)으로 만듭니다 ([ADR-027](doc/adr.md#adr-027)).
+- 경기도 전체: 노선 약 3,160개, 정류장 약 41,000곳(고를 수 있는 경기도 정류장 약 38,000곳). 서울·인천 정류장은 노선 경로로만 씁니다.
+- 받은 파일은 `scripts/.cache/baseinfo`에 버전별로 보관해 같은 날 다시 받지 않습니다. 정류장 수가 20% 넘게 줄면 기존 파일을 지킵니다.
 
 ## 배포 (Cloudflare)
 ### 처음 한 번
@@ -63,7 +64,7 @@ Cloudflare 대시보드 → Workers & Pages → `mybus-route` → Settings → B
 - Build variables: `VITE_NAVER_MAP_CLIENT_ID`
 
 ## 준비할 계정·API
-- data.go.kr: 경기도_버스도착정보 조회(승인됨), 경기도_정류소 조회, 경기도_버스노선 조회
+- data.go.kr (같은 키): 경기도_버스도착정보 조회, 경기도_버스기반정보 조회, 기상청_단기예보 조회서비스 (정류소·버스노선 조회는 이전 수집 방식용)
 - 네이버 클라우드 플랫폼: Maps 애플리케이션 (Dynamic Map, Geocoding, Reverse Geocoding)
   - 서비스 URL: Worker 주소(`https://mybus-route.<서브도메인>.workers.dev`), `http://localhost:5173`
 - Cloudflare 계정 (Workers 무료 플랜)

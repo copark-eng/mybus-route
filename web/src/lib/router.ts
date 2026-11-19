@@ -181,7 +181,7 @@ export function findPlans(db: BusDb, from: Place, to: Place, allowTransfer: bool
   const transfer = new Map<string, { plan: RoutePlan; cost: number }>();
   for (const [t1Id, aList] of reachA) {
     const t1 = db.stations.get(t1Id);
-    if (!t1?.sel) continue; // 환승은 성남시 정류장에서만 (ADR-010)
+    if (!t1?.sel) continue; // 환승은 경기도 정류장에서만 (ADR-027)
     for (const { station: t2, dist } of db.grid.near(t1.y, t1.x, CONFIG.transferRadiusM)) {
       const bList = reachB.get(t2.id);
       if (!bList) continue;
