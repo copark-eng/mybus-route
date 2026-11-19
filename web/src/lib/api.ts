@@ -69,3 +69,29 @@ export async function reverseGeocode(lng: number, lat: number): Promise<string |
   const building = land.addition0?.value;
   return [...parts.filter(Boolean), num, building].filter(Boolean).join(" ");
 }
+
+/** 날씨 요약 (/api/weather, ADR-024). 필드는 02_api_spec.md 계약 그대로. */
+export interface WeatherSummary {
+  temp: number | null;
+  feels: number | null;
+  sky: "맑음" | "구름많음" | "흐림" | null;
+  precip: string | null;
+  rainFrom: { hour: number; pop: number; type: string } | null;
+  maxPop: number;
+  nx: number;
+  ny: number;
+  baseTime: string;
+}
+
+/**
+ * 날씨 조회. 좌표는 소수 3자리로 반올림해 보낸다(같은 격자 → Worker 캐시 적중).
+ * 실패(2xx 아님·JSON 파싱 실패)는 예외 — 호출 측에서 null 로 바꿔 날씨 줄을 숨긴다 (FR-6.2).
+ */
+export function fetchWeather(lat?: number, lng?: number): Promise<WeatherSummary> {
+  const params: Record<string, string> = {};
+  if (lat !== undefined && lng !== undefined && Number.isFinite(lat) && Number.isFinite(lng)) {
+    params.lat = lat.toFixed(3);
+    params.lng = lng.toFixed(3);
+  }
+  return getJson<WeatherSummary>("/weather", params);
+}

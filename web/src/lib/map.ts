@@ -16,6 +16,8 @@ export interface MapView {
   setEndpoints(from: Place | null, to: Place | null): void;
   showPath(segments: { coords: [number, number][]; color: string }[]): void;
   focus(lat: number, lng: number): void;
+  /** 지도와 이벤트를 정리한다 (React 언마운트 시) */
+  destroy(): void;
 }
 
 const MARKER_MIN_ZOOM = 16;
@@ -24,17 +26,19 @@ export async function initMap(
   el: HTMLElement,
   db: BusDb,
   describe: (s: Station) => string,
-  onPick: PickHandler,
+  onPick: PickHandler | null,
   reverse: (lng: number, lat: number) => Promise<string | null>,
+  signal?: AbortSignal,
 ): Promise<MapView | null> {
   if (!config.naverMapClientId) {
     el.textContent = "VITE_NAVER_MAP_CLIENT_ID 가 설정되지 않아 지도를 표시하지 않습니다.";
     el.classList.add("map-missing");
     return null;
   }
-  await loadScript(
-    `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(config.naverMapClientId)}`,
-  );
+  await loadSdk();
+  // SDK 를 기다리는 동안 컴포넌트가 사라졌으면 지도를 만들지 않는다.
+  // (만든 뒤 destroy 하면 같은 요소에 새로 만든 지도의 화면까지 지워진다 — React 개발 모드 이중 마운트)
+  if (signal?.aborted) return null;
   const { naver } = window;
   const map = new naver.maps.Map(el, {
     center: new naver.maps.LatLng(config.initialCenter.lat, config.initialCenter.lng),
@@ -59,7 +63,7 @@ export async function initMap(
         icon: { content: `<div class="stop-dot" title="${esc(s.name)}"></div>`, anchor: new naver.maps.Point(7, 7) },
         zIndex: 10,
       });
-      naver.maps.Event.addListener(m, "click", () => openPicker(s.y, s.x, `${s.name} (${s.no})`, describe(s), {
+      if (onPick) naver.maps.Event.addListener(m, "click", () => openPicker(s.y, s.x, `${s.name} (${s.no})`, describe(s), {
         kind: "station", stationId: s.id, label: `${s.name} (${s.no})`, lat: s.y, lng: s.x,
       }));
       stationMarkers.push(m);
@@ -76,7 +80,7 @@ export async function initMap(
       <div class="picker-btns"><button data-role="from">출발</button><button data-role="to">도착</button></div>`;
     box.addEventListener("click", (e) => {
       const role = (e.target as HTMLElement).dataset.role as "from" | "to" | undefined;
-      if (role) { info.close(); onPick(place, role); }
+      if (role) { info.close(); onPick?.(place, role); }
     });
     info.setContent(box);
     const pos = new naver.maps.LatLng(lat, lng);
@@ -84,7 +88,7 @@ export async function initMap(
     info.open(map, pos);
   }
 
-  naver.maps.Event.addListener(map, "click", async (e: any) => {
+  if (onPick) naver.maps.Event.addListener(map, "click", async (e: any) => {
     const lat = e.coord.y;
     const lng = e.coord.x;
     openPicker(lat, lng, "주소 확인 중…", "", { kind: "point", label: "지도에서 선택한 위치", lat, lng });
@@ -134,7 +138,23 @@ export async function initMap(
     focus(lat, lng) {
       map.panTo(new naver.maps.LatLng(lat, lng));
     },
+    destroy() {
+      // SDK 내부 상태(인증 실패 등)에 따라 예외가 날 수 있어 각각 감싼다
+      const safe = (f: () => void) => { try { f(); } catch { /* 무시 */ } };
+      safe(() => info.close());
+      [...stationMarkers, ...endpointMarkers, ...lines].forEach((o) => safe(() => o.setMap(null)));
+      safe(() => map.destroy());
+    },
   };
+}
+
+/** SDK 스크립트는 모듈 단위 Promise 로 한 번만 불러온다 */
+let sdk: Promise<void> | null = null;
+function loadSdk(): Promise<void> {
+  sdk ??= loadScript(
+    `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(config.naverMapClientId!)}`,
+  ).catch((e) => { sdk = null; throw e; });
+  return sdk;
 }
 
 function loadScript(src: string): Promise<void> {

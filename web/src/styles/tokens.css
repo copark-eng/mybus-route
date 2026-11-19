@@ -1,0 +1,96 @@
+/* 디자인 토큰 (ADR-021 미니멀 화이트). 다크 모드는 변수만 바꾼다. */
+:root {
+  --bg: #ffffff;
+  --surface: #f5f6f8;
+  --surface-2: #eceef1;
+  --border: #e3e5e9;
+  --text-1: #111418;
+  --text-2: #5b6270;
+  --text-3: #8c93a0;
+  --accent: #0f766e;
+  --accent-weak: #e6f3f1;
+  --danger: #d92d20;
+  --est: #b54708;
+  --seg-walk: #d5d9df;
+  --hatch: rgba(255, 255, 255, 0.55);
+  --on-color: #ffffff;
+
+  /* 출발·도착 표시 */
+  --from: var(--accent);
+  --to: #c2410c;
+
+  /* 노선 종류 색 (lib/routeType.ts) */
+  --route-airport: #6941c6;
+  --route-express: #d92d20;
+  --route-direct: #e04f16;
+  --route-seat: #1570ef;
+  --route-village: #ca8504;
+  --route-normal: #079455;
+  --route-default: #667085;
+
+  /* 글자 */
+  --font: Pretendard, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --fs-display: 700 32px/38px var(--font);
+  --fs-title: 700 22px/28px var(--font);
+  --fs-heading: 600 17px/24px var(--font);
+  --fs-body: 400 15px/22px var(--font);
+  --fs-small: 400 13px/18px var(--font);
+  --fs-caption: 500 12px/16px var(--font);
+
+  /* 간격 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* 모서리 */
+  --r-sm: 6px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-full: 999px;
+
+  /* 그림자 */
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-2: 0 8px 24px rgba(16, 24, 40, 0.12);
+  --pop-border: transparent;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --surface: #1a1d23;
+    --surface-2: #242832;
+    --border: #2c313b;
+    --text-1: #f2f4f7;
+    --text-2: #a3aab8;
+    --text-3: #6e7684;
+    --accent: #2dd4bf;
+    --accent-weak: #12302d;
+    --danger: #f97066;
+    --est: #fdb022;
+    --seg-walk: #3a404b;
+    --hatch: rgba(0, 0, 0, 0.45);
+    --on-color: #0f1115;
+    --to: #fb923c;
+
+    --route-airport: #9e77ed;
+    --route-express: #f97066;
+    --route-direct: #f38744;
+    --route-seat: #53b1fd;
+    --route-village: #fac515;
+    --route-normal: #47cd89;
+    --route-default: #98a2b3;
+
+    /* 다크에서는 그림자 대신 테두리 */
+    --shadow-1: none;
+    --shadow-2: none;
+    --pop-border: var(--border);
+
+    color-scheme: dark;
+  }
+}

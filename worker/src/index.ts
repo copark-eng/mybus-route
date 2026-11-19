@@ -5,7 +5,13 @@
  *   GET /api/arrivals?stationId=206000004      경기도 버스도착정보 (20초 캐시, ADR-015)
  *   GET /api/geocode?query=성남시 분당구 ...      NCP Geocoding (ADR-013, ADR-019)
  *   GET /api/reverse-geocode?lng=127.1&lat=37.3  NCP Reverse Geocoding
+ *   GET /api/weather?lat=37.38&lng=127.12        기상청 단기예보 요약 (10분 캐시, 실패 60초, ADR-024)
+ *
+ * 성공 응답은 데이터 그대로, 오류는 {error, detail?} (02_api_spec.md). 캐시는 http.ts 참고.
  */
+import { weather } from "./weather";
+import { cacheGet, cachePut, json } from "./http";
+
 export interface Env {
   BUS_API_KEY: string;
   NCP_KEY_ID: string;
@@ -19,7 +25,7 @@ const ARRIVAL_TTL_SEC = 20;
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (req.method !== "GET") return json({ error: "method not allowed" }, 405);
+    if (req.method !== "GET") return json({ error: "method not allowed" }, 405, { Allow: "GET" });
     const url = new URL(req.url);
     try {
       switch (url.pathname) {
@@ -29,6 +35,8 @@ export default {
           return await geocode(url, env);
         case "/api/reverse-geocode":
           return await reverseGeocode(url, env);
+        case "/api/weather":
+          return await weather(url, env.BUS_API_KEY, ctx);
         default:
           return json({ error: "not found" }, 404);
       }
@@ -52,10 +60,9 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
   const stationId = url.searchParams.get("stationId") ?? "";
   if (!/^\d{6,12}$/.test(stationId)) return json({ error: "stationId 가 올바르지 않습니다" }, 400);
 
-  // 공유 캐시: 같은 정류장은 20초 동안 data.go.kr 을 다시 부르지 않는다.
-  const cacheKey = new Request(`https://cache.mybus-route/arrivals/${stationId}`);
-  const cache = caches.default;
-  const hit = await cache.match(cacheKey);
+  // 공유 캐시: 같은 정류장은 20초 동안 data.go.kr 을 다시 부르지 않는다 (메모리 → caches.default).
+  const cacheKey = `arrivals/${stationId}`;
+  const hit = await cacheGet(cacheKey);
   if (hit) return hit;
 
   const upstream = new URL(ARRIVAL_URL);
@@ -89,7 +96,7 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
   }));
 
   const out = json(data, 200, { "Cache-Control": `public, max-age=${ARRIVAL_TTL_SEC}` });
-  ctx.waitUntil(cache.put(cacheKey, out.clone()));
+  await cachePut(cacheKey, out, ARRIVAL_TTL_SEC, ctx);
   return out;
 }
 
@@ -102,6 +109,7 @@ function ncpHeaders(env: Env): HeadersInit {
 async function geocode(url: URL, env: Env): Promise<Response> {
   const query = (url.searchParams.get("query") ?? "").trim();
   if (query.length < 2) return json({ error: "query 는 2글자 이상" }, 400);
+  if (query.length > 100) return json({ error: "query 는 100글자 이하" }, 400);
   const upstream = new URL(GEOCODE_URL);
   upstream.searchParams.set("query", query);
   const res = await fetch(upstream, { headers: ncpHeaders(env) });
@@ -118,9 +126,10 @@ async function geocode(url: URL, env: Env): Promise<Response> {
 }
 
 async function reverseGeocode(url: URL, env: Env): Promise<Response> {
-  const lng = Number(url.searchParams.get("lng"));
-  const lat = Number(url.searchParams.get("lat"));
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return json({ error: "lng, lat 이 필요합니다" }, 400);
+  // Number(null) = Number("") = 0 이 통과하지 않도록 빈 값을 먼저 걸러낸다
+  const lng = toNum(url.searchParams.get("lng"));
+  const lat = toNum(url.searchParams.get("lat"));
+  if (lng === null || lat === null) return json({ error: "lng, lat 이 필요합니다" }, 400);
   const upstream = new URL(REVERSE_GEOCODE_URL);
   upstream.searchParams.set("coords", `${lng},${lat}`);
   upstream.searchParams.set("orders", "roadaddr,addr");
@@ -137,13 +146,12 @@ async function upstreamDetail(res: Response): Promise<string> {
   return (await res.text()).slice(0, 300);
 }
 
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json; charset=utf-8", ...headers },
-  });
+/** 빈 값·숫자가 아닌 값은 null, 유한한 숫자만 돌려준다 */
+function toNum(v: string | null): number | null {
+  if (v === null || v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
-
 
 /** API 가 결과 1건이면 객체, 여러 건이면 배열로 주는 경우를 통일한다. */
 function toList(v: unknown): any[] {

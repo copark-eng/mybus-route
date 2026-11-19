@@ -1,0 +1,27 @@
+/* 네이버 지도 위에 그리는 마커·팝업 (lib/map.ts 가 만드는 DOM) */
+.stop-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--accent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.pin {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff;
+  color: #fff; font: 700 12px/1 var(--font);
+  display: grid; place-items: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.pin-from { background: #0f766e; }
+.pin-to { background: #c2410c; }
+.picker {
+  background: var(--bg); color: var(--text-1); font: var(--fs-small);
+  border-radius: var(--r-md); padding: var(--sp-3);
+  box-shadow: var(--shadow-2); border: 1px solid var(--pop-border);
+  display: grid; gap: var(--sp-1); min-width: 180px; max-width: 260px;
+}
+.picker strong { font: var(--fs-body); font-weight: 600; }
+.picker small { color: var(--text-2); }
+.picker-btns { display: flex; gap: var(--sp-2); margin-top: var(--sp-1); }
+.picker-btns button {
+  flex: 1; min-height: 44px; border: 0; border-radius: var(--r-sm);
+  color: #fff; font: var(--fs-small); font-weight: 600;
+}
+.picker-btns [data-role="from"] { background: #0f766e; }
+.picker-btns [data-role="to"] { background: #c2410c; }

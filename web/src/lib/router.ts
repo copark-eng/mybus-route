@@ -102,7 +102,8 @@ export function isRunning(route: Route, at: Date): boolean {
   if (first === null || last === null) return true;
   if (last < first) last += 24 * 60; // 막차가 자정을 넘는 노선
   let now = at.getHours() * 60 + at.getMinutes();
-  if (now < first) now += 24 * 60;
+  // 첫차 10분 전 여유 구간은 오늘로 본다 (`now < first` 로 비교하면 05:50(첫차 06:00)이 다음 날로 넘어가 false 가 됐다)
+  if (now < first - 10) now += 24 * 60;
   return now >= first - 10 && now <= last + 90;
 }
 
@@ -238,13 +239,16 @@ export async function evaluate(db: BusDb, plans: RoutePlan[]): Promise<OptionRes
   // data.go.kr 초당 호출 제한을 고려해 동시에 4개씩만 부른다
   const fetched = new Map<string, StationArrivals>();
   const queue = [...need];
+  let lastError: unknown = null;
   await Promise.all(
     Array.from({ length: 4 }, async () => {
       for (let id = queue.shift(); id; id = queue.shift()) {
-        await fetchArrivals(id).then((a) => fetched.set(id!, a), () => undefined);
+        await fetchArrivals(id).then((a) => fetched.set(id!, a), (e) => { lastError = e; });
       }
     }),
   );
+  // 하나도 못 받았으면 모든 경로가 "추정"으로 보이는 대신 오류로 알린다 (일부 실패는 추정으로 계속)
+  if (need.size > 0 && fetched.size === 0 && lastError) throw lastError;
   const now = Date.now();
   return plans
     .map((p) => evaluatePlan(db, p, fetched, now))

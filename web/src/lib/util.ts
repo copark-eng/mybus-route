@@ -23,3 +23,16 @@ export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number)
     t = setTimeout(() => fn(...a), ms);
   };
 }
+
+/** 장소 라벨을 짧게: 정류장 번호 "(12345)" 와 앞의 "○○시 ○○구" 를 떼고 max 글자까지 */
+export function shortLabel(label: string, max = 14): string {
+  return label
+    .replace(/\s*\(\d+\)$/, "")
+    .replace(/^(\S+시\s+)?(\S+구\s+)?/, "")
+    .slice(0, max);
+}
+
+/** "n분 후" 형식의 출발 안내. 60초 미만은 "곧" */
+export function fmtDepart(sec: number): string {
+  return sec < 60 ? "곧 출발" : `${fmtWait(sec)} 후 출발`;
+}
