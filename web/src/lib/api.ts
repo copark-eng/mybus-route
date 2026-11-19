@@ -15,9 +15,12 @@ export interface GeocodeResult {
   lat: number;
 }
 
+/** 한 요청이 늦어도 화면 전체가 기다리지 않도록 8초에서 끊는다 (Worker 는 6초에서 끊음) */
+const REQUEST_TIMEOUT_MS = 8_000;
+
 async function getJson<T>(path: string, params: Record<string, string>): Promise<T> {
   const query = new URLSearchParams(params).toString();
-  const res = await fetch(`${config.apiBase}${path}?${query}`);
+  const res = await fetch(`${config.apiBase}${path}?${query}`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
   return res.json() as Promise<T>;
 }

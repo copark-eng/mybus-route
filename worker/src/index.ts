@@ -18,7 +18,8 @@ export interface Env {
   NCP_KEY: string;
 }
 
-const ARRIVAL_URL = "https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArrivalListv2";
+const UPSTREAM_TIMEOUT_MS = 6_000;
+const ARRIVAL_URL ="https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArrivalListv2";
 const GEOCODE_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
 const REVERSE_GEOCODE_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
 const ARRIVAL_TTL_SEC = 20;
@@ -71,11 +72,21 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
   upstream.searchParams.set("stationId", stationId);
   upstream.searchParams.set("format", "json");
 
-  // data.go.kr 초당 호출 제한(429)에 걸리면 잠시 뒤 다시 시도한다
-  let res = await fetch(upstream);
-  for (let attempt = 1; res.status === 429 && attempt <= 3; attempt++) {
-    await new Promise((r) => setTimeout(r, 300 * attempt));
-    res = await fetch(upstream);
+  // data.go.kr 초당 호출 제한(429)에 걸리면 잠시 뒤 다시 시도한다.
+  // 가끔 한 정류장 응답이 20초 가까이 걸리므로 6초에서 끊는다 (화면은 그 구간을 추정으로 계속).
+  const call = () => fetch(upstream, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+  let res: Response;
+  try {
+    res = await call();
+    for (let attempt = 1; res.status === 429 && attempt <= 3; attempt++) {
+      await new Promise((r) => setTimeout(r, 300 * attempt));
+      res = await call();
+    }
+  } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      return json({ error: "data.go.kr 응답 지연" }, 504);
+    }
+    throw e;
   }
   if (!res.ok) return json({ error: `data.go.kr ${res.status}` }, 502);
   const body = (await res.json()) as any;
