@@ -354,3 +354,12 @@ button.card:hover { background: var(--surface-2); }
 .doc-table { width: 100%; border-collapse: collapse; font: var(--fs-small); }
 .doc-table th, .doc-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
 .doc-table th { background: var(--surface); }
+.app-menu-version { padding: 8px 12px 4px; font: var(--fs-caption); color: var(--text-3); border-top: 1px solid var(--border); margin-top: 4px; }
+
+/* ---- 새 버전 알림 (ADR-034) ---- */
+.update-banner {
+  position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 16px; border-radius: 999px;
+  background: var(--text-1); color: var(--bg); font: var(--fs-small); box-shadow: 0 6px 20px rgba(0,0,0,.25);
+}
+.update-banner button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }

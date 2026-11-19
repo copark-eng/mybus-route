@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { DocView } from "../../App";
+import { BUILD_ID } from "../../hooks/useNewVersion";
+
+/** 빌드 시각을 한국 시간 "2026.11.19 23:41" 로 (ADR-034). 지금 보고 있는 화면이 최신인지 확인용 */
+function versionLabel(): string {
+  const d = new Date(BUILD_ID);
+  if (Number.isNaN(d.getTime())) return BUILD_ID;
+  const k = new Date(d.getTime() + 9 * 3600_000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${k.getUTCFullYear()}.${p(k.getUTCMonth() + 1)}.${p(k.getUTCDate())} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())}`;
+}
 
 /** 메뉴 항목 (ADR-033). 문서가 늘면 여기에 추가한다 */
 const ITEMS: { name: DocView["name"]; label: string }[] = [
@@ -53,6 +63,7 @@ export function AppMenu({ onOpen }: { onOpen(name: DocView["name"]): void }) {
               </button>
             </li>
           ))}
+          <li role="none" className="app-menu-version" data-testid="app-version">버전 {versionLabel()}</li>
         </ul>
       )}
     </div>

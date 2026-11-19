@@ -4,6 +4,7 @@ import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { DbContext, RouteLinkContext, StoreContext } from "./context";
 import { useBusDb } from "./hooks/useBusDb";
 import { useSaved } from "./hooks/useSaved";
+import { useNewVersion } from "./hooks/useNewVersion";
 import type { Place } from "./lib/places";
 import type { OptionResult, RoutePlan } from "./lib/router";
 import { DetailScreen } from "./screens/DetailScreen";
@@ -51,6 +52,7 @@ function viewFromHash(): View {
 export function App() {
   const { db, error, retry } = useBusDb();
   const saved = useSaved();
+  const newVersion = useNewVersion();
 
   // ---- 내비게이션: view 상태 + history.pushState (라우터 라이브러리 없음) ----
   const stack = useRef(new Map<number, View>());
@@ -145,6 +147,12 @@ export function App() {
           </ErrorBoundary>
         )}
         {v.name === "privacy" && <PrivacyScreen nav={nav} />}
+        {newVersion && (
+          <div className="update-banner" role="status" data-testid="update-banner">
+            <span>새 버전이 나왔습니다</span>
+            <button type="button" onClick={() => location.reload()}>새로고침</button>
+          </div>
+        )}
         {/* 모든 화면 오른쪽 위 ☰ 메뉴 (ADR-033) */}
         <AppMenu onOpen={(name) => { if (v.name !== name) navigate({ name }); }} />
         </RouteLinkContext.Provider>
