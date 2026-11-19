@@ -98,3 +98,24 @@ export function fetchWeather(lat?: number, lng?: number): Promise<WeatherSummary
   }
   return getJson<WeatherSummary>("/weather", params);
 }
+
+/** 노선의 운행 중 버스 (/api/bus-locations, ADR-028). stationSeq 는 route.stops 인덱스 + 1 */
+export interface BusLocation {
+  plateNo: string | null;
+  stationSeq: number;
+  stationId: string;
+  stateCd: number | null; // 0 교차로 통과, 1 정류소 도착, 2 정류소 출발
+  lowPlate: number | null; // 1 저상, 2 2층
+  crowded: number | null; // 1 여유 ~ 4 매우혼잡
+  remainSeat: number | null;
+}
+
+/** 실패 시 예외의 message 에 Worker 의 error 문구가 담긴다 */
+export async function fetchBusLocations(routeId: string): Promise<BusLocation[]> {
+  const res = await fetch(`${config.apiBase}/bus-locations?routeId=${encodeURIComponent(routeId)}`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error ?? `API ${res.status}`);
+  return body as BusLocation[];
+}

@@ -247,3 +247,39 @@ button.card:hover { background: var(--surface-2); }
 .board { margin-top: var(--sp-8); }
 .board-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-3); }
 .board-list li { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+
+/* ---- 노선 정보 화면 (ADR-028) ---- */
+.route-badge-link { border: 0; cursor: pointer; font: inherit; color: var(--on-color); }
+.route-badge-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.route-info { display: grid; gap: var(--sp-2, 8px); margin-bottom: var(--sp-3, 12px); }
+.route-info-head { display: flex; align-items: center; gap: 8px; }
+.route-ends { font: var(--fs-heading); margin: 0; }
+.route-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font: var(--fs-body); }
+.route-facts dt { color: var(--text-2); }
+.route-facts dd { margin: 0; }
+.route-facts a { color: var(--accent); }
+
+.route-line { list-style: none; margin: 0; padding: 0; }
+.route-line .stop { position: relative; display: flex; gap: 12px; min-height: 40px; }
+.route-line .stop-dot-line { position: relative; flex: 0 0 14px; }
+.route-line .stop-dot-line::before { /* 세로선 */
+  content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--border);
+}
+.route-line .stop-dot-line::after { /* 정류장 점 */
+  content: ""; position: absolute; left: 2px; top: 13px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--text-3); box-sizing: border-box;
+}
+.route-line .stop:first-child .stop-dot-line::before { top: 14px; }
+.route-line .stop:last-child .stop-dot-line::before { bottom: auto; height: 14px; }
+.route-line .stop-body { display: grid; gap: 4px; padding: 8px 0; min-width: 0; }
+.route-line .stop-name { font: var(--fs-body); }
+.route-line .is-virtual .stop-name { color: var(--text-3); font: var(--fs-small); }
+.route-line .has-bus .stop-dot-line::after { border-color: var(--accent); background: var(--accent); }
+.route-line .is-mark { background: var(--accent-weak); border-radius: 8px; }
+.route-line .is-mark .stop-name { font-weight: 700; }
+.tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; font: var(--fs-caption); background: var(--surface-2); color: var(--text-2); vertical-align: 1px; }
+.tag-mark { background: var(--accent); color: var(--on-color); }
+.bus-chip {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; justify-self: start;
+  padding: 3px 8px; border-radius: 999px; background: var(--accent-weak); color: var(--text-1); font: var(--fs-small);
+}

@@ -52,8 +52,8 @@ export function StepList({ result: r, now, from, to }: { result: OptionResult; n
             <b>{l.from.name}</b> <span className="muted small">{l.from.no}</span>
           </span>
           <span className="step-line">
-            <RouteBadge name={l.route.name} type={l.route.type} />
-            <span className="muted small">{l.route.type}</span>
+            <RouteBadge name={l.route.name} type={l.route.type} routeId={l.route.id} stationId={l.from.id} />
+            <span className="muted small">{l.route.type} · 눌러서 노선 정보</span>
           </span>
           <span className="step-line">
             승차 <b className="num">{board === null ? "-" : board >= 60 ? `${fmtWait(board)} 후` : "곧 도착"}</b>

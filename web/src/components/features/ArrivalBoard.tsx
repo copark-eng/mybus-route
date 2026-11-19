@@ -24,7 +24,7 @@ export function ArrivalBoard({ station, arrivals, now }: { station: Station; arr
         <ul className="board-list">
           {rows.map(({ r, secs }) => (
             <li key={`${r.routeId}-${r.staOrder}`}>
-              <RouteBadge name={r.routeName} type={db.routes.get(r.routeId)?.type} size="sm" />
+              <RouteBadge name={r.routeName} type={db.routes.get(r.routeId)?.type} size="sm" routeId={db.routes.has(r.routeId) ? r.routeId : undefined} stationId={station.id} />
               <span className="num small">{secs.length ? secs.map((s) => fmtWait(s)).join(" · ") : <span className="muted">도착 정보 없음</span>}</span>
             </li>
           ))}

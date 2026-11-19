@@ -6,10 +6,12 @@
  *   GET /api/geocode?query=성남시 분당구 ...      NCP Geocoding (ADR-013, ADR-019)
  *   GET /api/reverse-geocode?lng=127.1&lat=37.3  NCP Reverse Geocoding
  *   GET /api/weather?lat=37.38&lng=127.12        기상청 단기예보 요약 (10분 캐시, 실패 60초, ADR-024)
+ *   GET /api/bus-locations?routeId=241222005     노선의 운행 중 버스 위치 (15초 캐시, ADR-028)
  *
  * 성공 응답은 데이터 그대로, 오류는 {error, detail?} (02_api_spec.md). 캐시는 http.ts 참고.
  */
 import { weather } from "./weather";
+import { busLocations } from "./busLocations";
 import { cacheGet, cachePut, json } from "./http";
 
 export interface Env {
@@ -38,6 +40,8 @@ export default {
           return await reverseGeocode(url, env);
         case "/api/weather":
           return await weather(url, env.BUS_API_KEY, ctx);
+        case "/api/bus-locations":
+          return await busLocations(url, env.BUS_API_KEY, ctx);
         default:
           return json({ error: "not found" }, 404);
       }

@@ -12,6 +12,11 @@ export function useDb(): BusDb {
   return db;
 }
 
+/** 노선 번호를 누르면 노선 정보 화면을 연다 (ADR-028). stationId 를 주면 그 정류장을 강조한다 */
+export type OpenRoute = (routeId: string, stationId?: string) => void;
+export const RouteLinkContext = createContext<OpenRoute | null>(null);
+export const useOpenRoute = () => useContext(RouteLinkContext);
+
 export function useStore(): SavedApi {
   const s = useContext(StoreContext);
   if (!s) throw new Error("StoreContext 가 없습니다");

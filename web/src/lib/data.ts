@@ -19,6 +19,12 @@ export interface Route {
   last: string; // 기점 막차
   turn: number;
   stops: string[];
+  /** 노선 정보 화면용 (ADR-028). v1 데이터에는 없다 */
+  downFirst?: string; // 종점 첫차
+  downLast?: string; // 종점 막차
+  company?: string;
+  tel?: string;
+  region?: string; // 운행지역 "성남,용인"
 }
 
 export interface StopRef {
@@ -56,10 +62,12 @@ export function buildDb(s: any, r: any): BusDb {
     stationList = (s.rows as [string, string, string, number, number, number][]).map(([id, no, name, x, y, sel]) =>
       sel ? { id, no, name, x, y, sel: 1 as const } : { id, no, name, x, y },
     );
-    routeList = (r.rows as [string, string, string, number | null, number | null, string, string, number, number[]][]).map(
-      ([id, name, type, peek, npeek, first, last, turn, stops]) => ({
+    type Row = [string, string, string, number | null, number | null, string, string, number, number[], string?, string?, string?, string?, string?];
+    routeList = (r.rows as Row[]).map(
+      ([id, name, type, peek, npeek, first, last, turn, stops, downFirst, downLast, company, tel, region]) => ({
         id, name, type, peek, npeek, first, last, turn,
         stops: stops.map((i) => stationList[i].id),
+        downFirst, downLast, company, tel, region,
       }),
     );
   } else {

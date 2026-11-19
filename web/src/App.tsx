@@ -1,20 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState, Button, Spinner } from "./components/ui";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
-import { DbContext, StoreContext } from "./context";
+import { DbContext, RouteLinkContext, StoreContext } from "./context";
 import { useBusDb } from "./hooks/useBusDb";
 import { useSaved } from "./hooks/useSaved";
 import type { Place } from "./lib/places";
 import type { OptionResult, RoutePlan } from "./lib/router";
 import { DetailScreen } from "./screens/DetailScreen";
 import { HomeScreen } from "./screens/HomeScreen";
+import { RouteScreen } from "./screens/RouteScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 
 export type SearchView = { name: "search"; from?: Place; to?: Place; auto?: boolean; focus?: boolean };
 export type DetailView =
   | { name: "detail"; kind: "favorite"; favoriteId: string }
   | { name: "detail"; kind: "result"; from: Place; to: Place; plan: RoutePlan; initial?: OptionResult };
-export type View = { name: "home" } | SearchView | DetailView;
+/** 노선 정보 화면 (ADR-028). stationId 는 강조할 정류장 */
+export type RouteView = { name: "route"; routeId: string; stationId?: string };
+export type View = { name: "home" } | SearchView | DetailView | RouteView;
 
 export interface Nav {
   navigate(v: View): void;
@@ -26,13 +29,17 @@ const HOME: View = { name: "home" };
 function hashOf(v: View): string {
   if (v.name === "search") return "#search";
   if (v.name === "detail") return v.kind === "favorite" ? `#fav/${encodeURIComponent(v.favoriteId)}` : "#route";
+  if (v.name === "route") return `#bus/${v.routeId}${v.stationId ? `/${v.stationId}` : ""}`;
   return location.pathname + location.search;
 }
 
-/** 새로고침 뒤처럼 메모리 스택에 없을 때: #fav/<id> 만 복원, 나머지는 홈 */
+/** 새로고침 뒤처럼 메모리 스택에 없을 때: #fav/<id>, #bus/<노선>[/<정류장>] 만 복원, 나머지는 홈 */
 function viewFromHash(): View {
-  const m = /^#fav\/(.+)$/.exec(location.hash);
-  return m ? { name: "detail", kind: "favorite", favoriteId: decodeURIComponent(m[1]) } : HOME;
+  const fav = /^#fav\/(.+)$/.exec(location.hash);
+  if (fav) return { name: "detail", kind: "favorite", favoriteId: decodeURIComponent(fav[1]) };
+  const bus = /^#bus\/(\d+)(?:\/(\d+))?$/.exec(location.hash);
+  if (bus) return { name: "route", routeId: bus[1], stationId: bus[2] };
+  return HOME;
 }
 
 export function App() {
@@ -87,6 +94,10 @@ export function App() {
   if (v.name === "home" && search) setSearch(null);
 
   const nav: Nav = { navigate, back };
+  const openRoute = useCallback(
+    (routeId: string, stationId?: string) => navigate({ name: "route", routeId, stationId }),
+    [navigate],
+  );
 
   if (!db) {
     return (
@@ -106,6 +117,7 @@ export function App() {
   return (
     <DbContext.Provider value={db}>
       <StoreContext.Provider value={saved}>
+        <RouteLinkContext.Provider value={openRoute}>
         {v.name === "home" && (
           <ErrorBoundary key="home" fallback={<ScreenError onHome={() => navigate(HOME)} />}>
             <HomeScreen nav={nav} />
@@ -121,6 +133,12 @@ export function App() {
             <DetailScreen view={v} nav={nav} />
           </ErrorBoundary>
         )}
+        {v.name === "route" && (
+          <ErrorBoundary key={`route-${cur.idx}`} fallback={<ScreenError onHome={() => navigate(HOME)} />}>
+            <RouteScreen view={v} nav={nav} />
+          </ErrorBoundary>
+        )}
+        </RouteLinkContext.Provider>
       </StoreContext.Provider>
     </DbContext.Provider>
   );

@@ -149,13 +149,19 @@ async function main() {
       r.upLastTime,
       turn !== null ? turn - 1 : -1,
       stops,
+      // 노선 정보 화면용 (ADR-028): 종점 첫·막차, 운수회사, 운행지역
+      r.downFirstTime,
+      r.downLastTime,
+      r.companyName,
+      r.companyTel,
+      r.regionName,
     ]);
   }
   const routesOut = {
     v: 2,
     updatedAt: stationsOut.updatedAt,
     version: urls.version,
-    cols: ["id", "name", "type", "peek", "npeek", "first", "last", "turn", "stops"],
+    cols: ["id", "name", "type", "peek", "npeek", "first", "last", "turn", "stops", "downFirst", "downLast", "company", "tel", "region"],
     rows: routeOut,
   };
 
