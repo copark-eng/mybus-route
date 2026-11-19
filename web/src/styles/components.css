@@ -76,6 +76,13 @@ button.card:hover { background: var(--surface-2); }
   height: 24px; font: var(--fs-small); line-height: 24px; color: var(--text-2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.weather-label {
+  display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 6px;
+  background: var(--surface-2, rgba(127,127,127,.12)); color: var(--text-3, var(--text-2)); font-size: 11px; line-height: 18px;
+  vertical-align: 1px;
+}
+.weather-pair { display: grid; }
+.split-top .weather, .summary + .weather, .summary + .weather-pair { margin-top: 6px; }
 
 /* ---- 노선 배지 ---- */
 .route-badge {

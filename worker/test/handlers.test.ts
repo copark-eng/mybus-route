@@ -172,11 +172,11 @@ describe("/api/weather", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
-  it("빈 lat=&lng= 는 기본 좌표(분당, 62·123)", async () => {
+  it("빈 lat=&lng= 는 기본 좌표(성남시청, 62·124)", async () => {
     upstream.mockResolvedValue(new Response("Unauthorized", { status: 401 }));
     await call("/api/weather?lat=&lng=");
     const u = new URL(String(upstream.mock.calls[0][0]));
-    expect([u.searchParams.get("nx"), u.searchParams.get("ny")]).toEqual(["62", "123"]);
+    expect([u.searchParams.get("nx"), u.searchParams.get("ny")]).toEqual(["62", "124"]);
   });
 
   it("기상청 오류(미신청 401) → 502, 키는 본문에 없음, 60초 실패 캐시", async () => {

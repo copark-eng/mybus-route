@@ -23,14 +23,14 @@ export function HomeScreen({ nav }: { nav: Nav }) {
   useEffect(() => title.current?.focus({ preventScroll: true }), []);
   useEffect(() => { if (favs.length === 0) setEditing(false); }, [favs.length]);
 
-  const first = favs[0]?.from;
   const d = new Date(db.updatedAt);
   const openSearch = () => nav.navigate({ name: "search", focus: true });
 
   return (
     <main className="screen home" data-testid="screen-home">
       <h1 ref={title} tabIndex={-1} className="sr-only">mybus-route 홈</h1>
-      <WeatherLine lat={first?.lat} lng={first?.lng} />
+      {/* 홈은 기본 위치(성남시청) 날씨 (ADR-026) */}
+      <WeatherLine label="성남시청" />
 
       {favs.length > 0 ? (
         <>

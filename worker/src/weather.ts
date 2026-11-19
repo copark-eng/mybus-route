@@ -9,8 +9,8 @@ import { cacheGet, cachePut, json } from "./http";
 const BASE = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0";
 const TTL_SEC = 600;
 const ERR_TTL_SEC = 60;
-const DEFAULT_LAT = 37.3826; // 분당구청 부근
-const DEFAULT_LNG = 127.1189;
+const DEFAULT_LAT = 37.4200; // 성남시청 (ADR-026)
+const DEFAULT_LNG = 127.1267;
 /** 한국 부근만 허용 (기상청 격자 범위 안) */
 const LAT_RANGE = [33, 39] as const;
 const LNG_RANGE = [124, 132] as const;

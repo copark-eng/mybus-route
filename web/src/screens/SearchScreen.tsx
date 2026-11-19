@@ -6,6 +6,7 @@ import type { PlaceInputHandle } from "../components/features/PlaceInput";
 import { RefreshStatus } from "../components/features/RefreshStatus";
 import { RouteOptionCard } from "../components/features/RouteOptionCard";
 import { SearchForm, type SearchMode } from "../components/features/SearchForm";
+import { RouteWeather } from "../components/features/WeatherLine";
 import { Button, IconButton } from "../components/ui";
 import { useDb, useStore } from "../context";
 import { useArrivalsRefresh } from "../hooks/useArrivalsRefresh";
@@ -108,6 +109,8 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
           fromRef={fromRef}
           toRef={toRef}
         />
+        {/* 출발지·도착지 날씨 (ADR-026). 아직 고르지 않았으면 기본 위치 */}
+        <RouteWeather from={from} to={to} />
       </div>
 
       <div className="split-map">

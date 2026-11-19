@@ -4,6 +4,7 @@ import { NaverMap } from "../components/features/NaverMap";
 import { RefreshStatus } from "../components/features/RefreshStatus";
 import { StepList } from "../components/features/StepList";
 import { TimeBar } from "../components/features/TimeBar";
+import { RouteWeather } from "../components/features/WeatherLine";
 import { Badge, Button, EmptyState, IconButton } from "../components/ui";
 import { useDb, useStore } from "../context";
 import { remaining, useCountdown } from "../hooks/useCountdown";
@@ -114,6 +115,7 @@ export function DetailScreen({ view, nav }: { view: DetailView; nav: Nav }) {
               </p>
               {result.note && <p className="small muted">{result.note}</p>}
             </section>
+            <RouteWeather from={from} to={to} />
             <TimeBar result={result} now={now} size="lg" showLabels />
             <StepList result={result} now={now} from={from} to={to} />
           </>
