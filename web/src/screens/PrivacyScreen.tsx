@@ -2,14 +2,7 @@ import { useEffect, useRef } from "react";
 import type { Nav } from "../App";
 import { IconButton } from "../components/ui";
 
-/**
- * 운영자 정보 — 공개 전에 실제 값으로 채운다 (ADR-033).
- * 개인 연락처를 코드에 넣고 싶지 않다면 서비스용 메일 주소를 따로 만들어 쓰는 것을 권한다.
- */
-export const OPERATOR = {
-  name: "(운영자 이름을 입력하세요)",
-  contact: "(문의 이메일을 입력하세요)",
-};
+// 위치정보 관리책임자·문의 항목은 2026-11-19 사용자 요청으로 뺐다. 다시 넣을 때는 ADR-033 참고
 export const PRIVACY_EFFECTIVE_DATE = "2026년 11월 20일";
 
 /** 개인위치정보 처리방침 (ADR-033). 실제 앱 동작(ADR-030, 032, 033)과 일치해야 한다 */
@@ -74,13 +67,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
         <h2>6. 8세 이하 아동 등</h2>
         <p>서비스는 이용자의 나이를 확인하지 않으며, 위치정보를 서버에 저장하지 않습니다. 8세 이하 아동 등이 이용하는 경우 보호자가 위치 사용 허용 여부를 결정해 주세요.</p>
 
-        <h2>7. 위치정보 관리책임자 및 문의</h2>
-        <ul>
-          <li>관리책임자: {OPERATOR.name}</li>
-          <li>문의: {OPERATOR.contact}</li>
-        </ul>
-
-        <h2>8. 방침의 변경</h2>
+        <h2>7. 방침의 변경</h2>
         <p>내용이 바뀌면 이 화면에서 시행일과 함께 알립니다.</p>
       </article>
     </main>
