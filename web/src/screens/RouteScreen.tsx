@@ -14,7 +14,7 @@ import type { Route } from "../lib/data";
 import { loadShape, type Shape } from "../lib/shapes";
 
 /** 버스 위치 갱신 주기 (ADR-031) */
-const REFRESH_MS = 10_000;
+const REFRESH_MS = 30_000;
 
 /** 화면에 그릴 버스 하나: 정류장 index 와 다음 정류장까지 진행률 */
 interface BusView { bus: BusLocation; index: number; progress: number; key: string }
@@ -102,7 +102,7 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
       {error && <p className="msg small" data-testid="route-error">버스 위치를 불러오지 못했습니다: {error}</p>}
       <NaverMap from={markPlace} to={null} line={route} buses={busMarkers} className="map-route" />
       <p className="muted small route-note">
-        버스 위치는 10초마다 갱신하고, 정류장 사이에서는 도로 거리와 평균 속도로 대략 어디쯤인지 보여 줍니다.
+        버스 위치는 30초마다 갱신하고, 정류장 사이에서는 도로 거리와 평균 속도로 대략 어디쯤인지 보여 줍니다.
       </p>
       <RouteLine route={route} views={views} segLens={segLens} highlight={view.stationId} />
     </main>
