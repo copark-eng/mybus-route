@@ -325,3 +325,6 @@ button.card:hover { background: var(--surface-2); }
 @media (min-width: 768px) {
   .route-col .stop-name { font: var(--fs-body); }
 }
+.loc-help { margin-top: 8px; display: grid; gap: 10px; }
+.loc-help ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; font: var(--fs-small); }
+.loc-help-actions { display: flex; gap: 8px; }

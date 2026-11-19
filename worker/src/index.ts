@@ -21,6 +21,19 @@ export interface Env {
 }
 
 const UPSTREAM_TIMEOUT_MS = 6_000;
+
+/**
+ * data.go.kr 일일 호출 한도 초과 (resultCode 22, LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR).
+ * 초당 제한(…_PER_SECOND_EXCEEDS_ERROR)과 구분한다. 한도는 자정에 풀리므로 10분 동안 다시 부르지 않는다.
+ */
+const DAILY_LIMIT_KEY = "arrivals/__daily_limit__";
+const DAILY_LIMIT_TTL_SEC = 600;
+export const isDailyLimit = (text: string) =>
+  /LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR/.test(text) && !/PER_SECOND/.test(text);
+const dailyLimitResponse = () =>
+  json({ error: "오늘 실시간 조회 한도를 모두 썼습니다 (data.go.kr 일일 한도). 자정 이후 다시 됩니다.", code: "DAILY_LIMIT" }, 429, {
+    "Cache-Control": `public, max-age=${DAILY_LIMIT_TTL_SEC}`,
+  });
 const ARRIVAL_URL ="https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArrivalListv2";
 const GEOCODE_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
 const REVERSE_GEOCODE_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
@@ -30,26 +43,50 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (req.method !== "GET") return json({ error: "method not allowed" }, 405, { Allow: "GET" });
     const url = new URL(req.url);
-    try {
-      switch (url.pathname) {
-        case "/api/arrivals":
-          return await arrivals(url, env, ctx);
-        case "/api/geocode":
-          return await geocode(url, env);
-        case "/api/reverse-geocode":
-          return await reverseGeocode(url, env);
-        case "/api/weather":
-          return await weather(url, env.BUS_API_KEY, ctx);
-        case "/api/bus-locations":
-          return await busLocations(url, env.BUS_API_KEY, ctx);
-        default:
-          return json({ error: "not found" }, 404);
-      }
-    } catch (e) {
-      return json({ error: String(e) }, 502);
-    }
+    const started = Date.now();
+    const res = await route(url, env, ctx);
+    logUsage(req, url, res, started);
+    return res;
   },
 };
+
+async function route(url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
+  try {
+    switch (url.pathname) {
+      case "/api/arrivals":
+        return await arrivals(url, env, ctx);
+      case "/api/geocode":
+        return await geocode(url, env);
+      case "/api/reverse-geocode":
+        return await reverseGeocode(url, env);
+      case "/api/weather":
+        return await weather(url, env.BUS_API_KEY, ctx);
+      case "/api/bus-locations":
+        return await busLocations(url, env.BUS_API_KEY, ctx);
+      default:
+        return json({ error: "not found" }, 404);
+    }
+  } catch (e) {
+    return json({ error: String(e) }, 502);
+  }
+}
+
+/**
+ * 사용량 기록 (ADR-032): 어느 화면에서 어떤 API 를 얼마나 부르는지, 캐시로 막았는지.
+ * Cloudflare Workers Logs(대시보드 → Workers → mybus-route → Logs)나 `npx wrangler tail` 로 본다.
+ * 위치·주소 같은 개인 정보는 남기지 않는다 (정류장·노선 ID 와 화면 이름만).
+ */
+function logUsage(req: Request, url: URL, res: Response, started: number) {
+  const id = url.searchParams.get("stationId") ?? url.searchParams.get("routeId") ?? undefined;
+  console.log(JSON.stringify({
+    api: url.pathname.replace("/api/", ""),
+    id,
+    screen: req.headers.get("X-Screen") ?? "unknown",
+    status: res.status,
+    cache: res.headers.get("X-Cache") ?? "MISS",
+    ms: Date.now() - started,
+  }));
+}
 
 // ---------- 경기도 버스도착정보 ----------
 
@@ -65,6 +102,10 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
   const stationId = url.searchParams.get("stationId") ?? "";
   if (!/^\d{6,12}$/.test(stationId)) return json({ error: "stationId 가 올바르지 않습니다" }, 400);
 
+  // 일일 한도를 이미 넘겼으면 data.go.kr 을 부르지 않는다 (한도 소진을 더 키우지 않게)
+  const limited = await cacheGet(DAILY_LIMIT_KEY);
+  if (limited) return limited;
+
   // 공유 캐시: 같은 정류장은 20초 동안 data.go.kr 을 다시 부르지 않는다 (메모리 → caches.default).
   const cacheKey = `arrivals/${stationId}`;
   const hit = await cacheGet(cacheKey);
@@ -76,15 +117,18 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
   upstream.searchParams.set("stationId", stationId);
   upstream.searchParams.set("format", "json");
 
-  // data.go.kr 초당 호출 제한(429)에 걸리면 잠시 뒤 다시 시도한다.
+  // data.go.kr 초당 호출 제한(429)에 걸리면 잠시 뒤 다시 시도한다. 일일 한도(429, 코드 22)는 재시도하지 않는다.
   // 가끔 한 정류장 응답이 20초 가까이 걸리므로 6초에서 끊는다 (화면은 그 구간을 추정으로 계속).
   const call = () => fetch(upstream, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
   let res: Response;
+  let text = "";
   try {
     res = await call();
-    for (let attempt = 1; res.status === 429 && attempt <= 3; attempt++) {
+    text = await res.text();
+    for (let attempt = 1; res.status === 429 && !isDailyLimit(text) && attempt <= 3; attempt++) {
       await new Promise((r) => setTimeout(r, 300 * attempt));
       res = await call();
+      text = await res.text();
     }
   } catch (e) {
     if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
@@ -92,8 +136,13 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
     }
     throw e;
   }
+  if (isDailyLimit(text)) {
+    const out = dailyLimitResponse();
+    await cachePut(DAILY_LIMIT_KEY, out, DAILY_LIMIT_TTL_SEC, ctx);
+    return out;
+  }
   if (!res.ok) return json({ error: `data.go.kr ${res.status}` }, 502);
-  const body = (await res.json()) as any;
+  const body = JSON.parse(text) as any;
   const header = body?.response?.msgHeader ?? {};
   const code = Number(header.resultCode ?? 0);
   if (code !== 0 && code !== 4) return json({ error: `data.go.kr ${code}: ${header.resultMessage}` }, 502);

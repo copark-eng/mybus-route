@@ -66,13 +66,20 @@ const cacheUrl = (key: string) => `https://cache.mybus-route/${key}`;
 /** 메모리 → caches.default 순으로 찾는다. 없으면 null. */
 export async function cacheGet(key: string): Promise<Response | null> {
   const m = memGet(key);
-  if (m) return m;
+  if (m) return markHit(m, "HIT-MEM");
   try {
     const hit = await caches.default.match(new Request(cacheUrl(key)));
-    return hit ?? null;
+    return hit ? markHit(hit, "HIT-EDGE") : null;
   } catch {
     return null; // 캐시 장애는 무시하고 상위 API 를 부른다
   }
+}
+
+/** 캐시에서 꺼낸 응답 표시 (사용량 기록, ADR-032) */
+function markHit(res: Response, kind: string): Response {
+  const out = new Response(res.body, res);
+  out.headers.set("X-Cache", kind);
+  return out;
 }
 
 /**

@@ -226,3 +226,28 @@ describe("/api/weather", () => {
     expect((await r.json()).error).toMatch(/SyntaxError/);
   });
 });
+
+describe("/api/arrivals 일일 한도", () => {
+  const limitBody = '{"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR","returnReasonCode":"22"}}}';
+
+  it("일일 한도면 재시도 없이 429 + DAILY_LIMIT, 이후 요청은 data.go.kr 을 부르지 않는다", async () => {
+    upstream.mockImplementation(async () => new Response(limitBody, { status: 429 }));
+    const r1 = await call("/api/arrivals?stationId=206000004");
+    expect(r1.status).toBe(429);
+    expect((await r1.json()).code).toBe("DAILY_LIMIT");
+    expect(upstream).toHaveBeenCalledTimes(1);
+    const r2 = await call("/api/arrivals?stationId=206000080"); // 다른 정류장도
+    expect(r2.status).toBe(429);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it("초당 제한(PER_SECOND)은 일일 한도로 보지 않고 재시도한다", async () => {
+    const perSec = '{"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"LIMITED_NUMBER_OF_SERVICE_REQUESTS_PER_SECOND_EXCEEDS_ERROR"}}}';
+    upstream
+      .mockResolvedValueOnce(new Response(perSec, { status: 429 }))
+      .mockResolvedValueOnce(ok({ response: { msgHeader: { resultCode: 4 }, msgBody: null } }));
+    const r = await call("/api/arrivals?stationId=206000004");
+    expect(r.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+});

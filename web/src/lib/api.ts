@@ -18,12 +18,33 @@ export interface GeocodeResult {
 /** 한 요청이 늦어도 화면 전체가 기다리지 않도록 8초에서 끊는다 (Worker 는 6초에서 끊음) */
 const REQUEST_TIMEOUT_MS = 8_000;
 
+/** 사용량 기록용 화면 이름 (ADR-032): home / search / detail / fav / bus. 개인 정보는 담지 않는다 */
+function screenHeader(): Record<string, string> {
+  const h = typeof location === "undefined" ? "" : location.hash;
+  const screen = h.startsWith("#search") ? "search" : h.startsWith("#route") ? "detail" : h.startsWith("#fav") ? "fav" : h.startsWith("#bus") ? "bus" : "home";
+  return { "X-Screen": screen };
+}
+
 async function getJson<T>(path: string, params: Record<string, string>): Promise<T> {
   const query = new URLSearchParams(params).toString();
-  const res = await fetch(`${config.apiBase}${path}?${query}`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  const res = await fetch(`${config.apiBase}${path}?${query}`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), headers: screenHeader() });
+  if (!res.ok) {
+    const text = await res.text();
+    let body: { error?: string; code?: string } | null = null;
+    try { body = JSON.parse(text); } catch { /* JSON 아님 */ }
+    throw new ApiError(body?.error ?? `API ${res.status}: ${text.slice(0, 120)}`, res.status, body?.code);
+  }
   return res.json() as Promise<T>;
 }
+
+/** Worker 오류. code 가 DAILY_LIMIT 이면 data.go.kr 일일 한도 초과 */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+export const isDailyLimitError = (e: unknown) => e instanceof ApiError && e.code === "DAILY_LIMIT";
 
 /** 도착정보 묶음. fetchedAt 은 응답을 받은 시각(ms)으로, 남은 시간 계산의 기준이 된다. */
 export interface StationArrivals {
@@ -113,7 +134,7 @@ export interface BusLocation {
 /** 실패 시 예외의 message 에 Worker 의 error 문구가 담긴다 */
 export async function fetchBusLocations(routeId: string): Promise<BusLocation[]> {
   const res = await fetch(`${config.apiBase}/bus-locations?routeId=${encodeURIComponent(routeId)}`, {
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), headers: screenHeader(),
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(body?.error ?? `API ${res.status}`);

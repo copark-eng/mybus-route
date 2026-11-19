@@ -12,6 +12,10 @@ directory = "../web/dist"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*"]
 
+# 사용량 기록 (ADR-032): API 요청마다 한 줄 로그. 대시보드 Workers → mybus-route → Logs 에서 본다 (무료 하루 20만 건, 3일 보관)
+[observability]
+enabled = true
+
 # 비밀값은 여기 적지 말고 아래 명령으로 등록한다 (로컬은 .dev.vars):
 #   npx wrangler secret put BUS_API_KEY
 #   npx wrangler secret put NCP_KEY_ID

@@ -13,9 +13,11 @@ export function RefreshStatus({ lastUpdated, loading, now, error, onRefresh, int
 }) {
   const ago = lastUpdated ? Math.max(0, Math.round((now - lastUpdated) / 1000)) : null;
   // 스크린리더 소음을 줄이려고 aria-live 문구는 갱신 상태가 바뀔 때만 달라지게 한다
-  const live = error ? "실시간 정보를 가져오지 못했습니다" : loading ? "갱신 중…" : lastUpdated ? "갱신 완료" : "";
+  // data.go.kr 일일 한도 초과는 따로 알린다 (ADR-032)
+  const errText = error?.includes("한도") ? "오늘 실시간 조회 한도를 모두 썼습니다" : "실시간 정보를 가져오지 못했습니다";
+  const live = error ? errText : loading ? "갱신 중…" : lastUpdated ? "갱신 완료" : "";
   const text = error
-    ? "실시간 정보를 가져오지 못했습니다"
+    ? errText
     : loading
       ? "갱신 중…"
       : ago === null

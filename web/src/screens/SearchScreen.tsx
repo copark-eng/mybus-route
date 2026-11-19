@@ -19,7 +19,9 @@ import { type Place, samePlace } from "../lib/places";
 import { findPlans } from "../lib/router";
 import { distanceM } from "../lib/data";
 import { isMine, myLocationPlace } from "../lib/places";
-import { getMyLocation, LOCATION_ERROR_TEXT, type LocationError, useMyLocation } from "../hooks/useMyLocation";
+import {
+  deviceKind, getMyLocation, LOCATION_ERROR_TEXT, type LocationError, locationPermission, PERMISSION_STEPS, useMyLocation,
+} from "../hooks/useMyLocation";
 
 /** 내 위치가 이만큼 바뀌면 출발지를 옮기고 경로를 다시 찾는다 */
 const MOVE_THRESHOLD_M = 30;
@@ -85,8 +87,13 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
   const my = useMyLocation(tracking && live);
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
+  /** 권한이 막혀 있을 때 기기별 허용 방법을 보여 준다 */
+  const [locHelp, setLocHelp] = useState(false);
   useEffect(() => {
-    if (my.error) setLocError(LOCATION_ERROR_TEXT[my.error]);
+    if (my.error) {
+      setLocError(LOCATION_ERROR_TEXT[my.error]);
+      if (my.error === "denied") setLocHelp(true);
+    }
   }, [my.error]);
   useEffect(() => {
     const loc = my.location;
@@ -100,11 +107,25 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
   const useMyLocationAsFrom = async () => {
     setLocating(true);
     setLocError(null);
+    setLocHelp(false);
     try {
+      // 누른 즉시 요청한다: 아직 안 물어본 상태면 브라우저가 허용 팝업을 띄운다 (iPhone 은 탭 직후에만 띄움)
       const loc = await getMyLocation();
       setFrom(myLocationPlace(loc.lat, loc.lng));
     } catch (e) {
-      setLocError(LOCATION_ERROR_TEXT[(e as LocationError)] ?? "현재 위치를 찾을 수 없습니다");
+      const err = e as LocationError;
+      if (err === "denied") {
+        // 팝업에서 '허용 안 함'을 한 번 누른 것인지, 아예 막혀서 팝업이 안 뜬 것인지 구분한다
+        const state = await locationPermission();
+        if (state === "prompt") {
+          setLocError("위치 사용을 허용하지 않았습니다. 다시 누르면 다시 물어봅니다.");
+        } else {
+          setLocError(LOCATION_ERROR_TEXT.denied);
+          setLocHelp(true);
+        }
+      } else {
+        setLocError(LOCATION_ERROR_TEXT[err] ?? "현재 위치를 찾을 수 없습니다");
+      }
     } finally {
       setLocating(false);
     }
@@ -124,7 +145,8 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
     ? "직행 버스가 없습니다. ‘환승 포함’으로 찾아보세요."
     : "1회 환승으로 갈 수 있는 경로를 찾지 못했습니다.";
   else if (!opts.done) message = "실시간 정보를 확인하는 중…";
-  else if (opts.error && shown.length === 0) message = "실시간 정보를 가져오지 못했습니다";
+  // 일일 한도 초과 같은 구체적인 이유가 있으면 그대로 보여 준다 (ADR-032)
+  else if (opts.error && shown.length === 0) message = opts.error;
   else if (shown.length === 0) message = "지금 운행 중인 버스로 갈 수 있는 경로가 없습니다.";
 
   return (
@@ -162,6 +184,17 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
           )}
         </div>
         {locError && <p className="msg small" role="alert" data-testid="my-location-error">{locError}</p>}
+        {locHelp && (
+          <section className="card loc-help" aria-label="위치 권한 허용 방법" data-testid="my-location-help">
+            <ol>
+              {PERMISSION_STEPS[deviceKind()].map((s) => <li key={s}>{s}</li>)}
+            </ol>
+            <div className="loc-help-actions">
+              <Button variant="primary" onClick={useMyLocationAsFrom} data-testid="my-location-retry">다시 시도</Button>
+              <Button onClick={() => { setLocHelp(false); setLocError(null); }}>닫기</Button>
+            </div>
+          </section>
+        )}
         {/* 출발지·도착지 날씨 (ADR-026). 아직 고르지 않았으면 기본 위치 */}
         <RouteWeather from={from} to={to} />
       </div>
@@ -177,7 +210,7 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
         {message && (
           <div className="msg" data-testid="search-message">
             <p>{message}</p>
-            {opts.error && shown.length === 0 && plans.length > 0 && (
+            {opts.error && shown.length === 0 && plans.length > 0 && !opts.error.includes("한도") && (
               <Button variant="primary" onClick={opts.refresh}>다시 시도</Button>
             )}
           </div>

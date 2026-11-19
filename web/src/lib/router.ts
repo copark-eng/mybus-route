@@ -16,8 +16,8 @@ export const CONFIG = {
   maxRideStops: 70,
   busSpeedMps: 6, // 정류장 사이 평균 주행 속도 (약 22km/h)
   dwellSec: 20, // 정류장마다 정차 시간
-  maxDirect: 8,
-  maxTransfer: 10, // 운행 시간이 아닌 후보가 빠질 수 있어 넉넉히 평가한다
+  maxDirect: 6, // data.go.kr 일일 한도를 아끼려고 줄임 (ADR-032)
+  maxTransfer: 6, // 운행 시간이 아닌 후보가 빠질 수 있어 여유를 두되, 호출 수를 줄인다 (ADR-032)
 };
 
 // ---------- 정의 ----------
