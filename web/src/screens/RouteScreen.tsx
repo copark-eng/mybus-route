@@ -165,12 +165,19 @@ function RouteInfo({ route, buses, failed }: { route: Route; buses: BusLocation[
 
 const CROWD = ["", "여유", "보통", "혼잡", "매우혼잡"];
 
-function busExtra(bus: BusLocation): string {
+function busTags(bus: BusLocation): string[] {
   return [
     bus.lowPlate === 1 ? "저상" : bus.lowPlate === 2 ? "2층" : null,
     bus.crowded ? CROWD[bus.crowded] : null,
     bus.remainSeat !== null ? `빈자리 ${bus.remainSeat}` : null,
-  ].filter(Boolean).join(" · ");
+  ].filter((t): t is string => !!t);
+}
+const busExtra = (bus: BusLocation) => busTags(bus).join(" · ");
+
+/** 남은 거리: 1km 미만은 50m 단위, 이상은 0.1km 단위 (추정값이라 너무 정밀하게 보이지 않게) */
+export function fmtLeft(m: number): string {
+  if (m >= 1000) return `${(m / 1000).toFixed(1)}km`;
+  return `${Math.max(50, Math.round(m / 50) * 50)}m`;
 }
 
 const plate = (b: BusLocation) => b.plateNo?.replace(/^경기/, "") ?? "버스";
@@ -189,19 +196,24 @@ function BusAtStop({ bus }: { bus: BusLocation }) {
 
 /** 정류장 사이를 달리는 버스: 세로 레일 위 진행률 위치에 놓는다 */
 function BusInTransit({ v, segLen }: { v: BusView; segLen: number }) {
-  const left = Math.max(0, Math.round(segLen * (1 - v.progress)));
-  const extra = busExtra(v.bus);
+  const left = fmtLeft(Math.max(0, segLen * (1 - v.progress)));
+  const tags = busTags(v.bus);
   return (
     <span
       className="bus-transit"
-      style={{ top: `${Math.round(v.progress * 100)}%` }}
+      // 칸 위아래 끝에서는 글자가 정류장 이름과 겹치므로 20%~80% 안에서 진행률만큼 움직인다
+      style={{ top: `${Math.round(20 + v.progress * 60)}%` }}
       data-testid="bus-transit"
-      title={`${plate(v.bus)} · 다음 정류장까지 약 ${left}m`}
+      title={`${plate(v.bus)} · 다음 정류장까지 약 ${left}${tags.length ? ` · ${tags.join(" · ")}` : ""}`}
     >
       <span className="bus-transit-icon" aria-hidden>🚌</span>
+      {/* 좁은 두 열에서도 잘리지 않게 두 줄로: 차량번호(+태그) / 남은 거리 */}
       <span className="bus-transit-text">
-        <span className="num">{plate(v.bus)}</span>
-        <span className="muted"> · 다음까지 약 {left >= 1000 ? `${(left / 1000).toFixed(1)}km` : `${left}m`}{extra && ` · ${extra}`}</span>
+        <span className="bus-transit-line">
+          <span className="num">{plate(v.bus)}</span>
+          {tags.map((t) => <span key={t} className="bus-tag">{t}</span>)}
+        </span>
+        <span className="bus-transit-line muted">다음 정류장 {left}</span>
       </span>
     </span>
   );
