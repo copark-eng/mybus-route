@@ -83,8 +83,9 @@ describe("looksLikeAddress", () => {
     expect(looksLikeAddress(q)).toBe(expected);
   });
 
-  it("숫자만 있어도 주소 후보 (정류장 번호와 함께 Geocoding 을 시도)", () => {
-    expect(looksLikeAddress("07015")).toBe(true);
+  it("숫자만 입력하면 정류장 번호로 보고 주소 검색을 하지 않는다 (ADR-035)", () => {
+    expect(looksLikeAddress("07015")).toBe(false);
+    expect(looksLikeAddress("판교역로 166")).toBe(true);
   });
 });
 

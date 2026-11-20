@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { fetchWeather, type WeatherSummary } from "../lib/weather";
+import { fetchWeather, toGrid, type WeatherSummary } from "../lib/weather";
 
-/** 모듈 메모리 캐시 10분 (키: 소수 2자리 lat,lng) */
+/** 모듈 메모리 캐시 10분. 키는 기상청 격자(약 5km) — 같은 칸이면 다시 부르지 않는다 (ADR-035) */
 const cache = new Map<string, { at: number; value: WeatherSummary }>();
 const TTL = 10 * 60_000;
 
-const cacheKey = (lat?: number, lng?: number) =>
-  lat !== undefined && lng !== undefined ? `${lat.toFixed(2)},${lng.toFixed(2)}` : "default";
+const cacheKey = (lat?: number, lng?: number) => {
+  if (lat === undefined || lng === undefined) return "default";
+  const { nx, ny } = toGrid(lat, lng);
+  return `${nx},${ny}`;
+};
 
 function cached(key: string): WeatherSummary | null {
   const hit = cache.get(key);

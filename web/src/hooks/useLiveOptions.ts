@@ -15,6 +15,8 @@ export interface LiveOptions {
   error: string | null;
   lastUpdated: number;
   refresh(): void;
+  /** 조작이 없어 자동 갱신을 멈춤 (ADR-035) */
+  paused: boolean;
 }
 
 /**
@@ -69,8 +71,8 @@ export function useLiveOptions(plans: RoutePlan[], enabled: boolean, limit = 8):
     }
   }, [db, plans, limit]);
 
-  const { running, runNow } = useArrivalsRefresh(task, enabled && plans.length > 0);
+  const { running, paused, runNow } = useArrivalsRefresh(task, enabled && plans.length > 0);
   const refresh = useCallback(() => { full.current = true; void runNow(); }, [runNow]);
   const cur = state.plans === plans ? state : { results: [], done: false, error: null, at: 0 };
-  return { results: cur.results, done: cur.done, loading: running, error: cur.error, lastUpdated: cur.at, refresh };
+  return { results: cur.results, done: cur.done, loading: running, paused, error: cur.error, lastUpdated: cur.at, refresh };
 }

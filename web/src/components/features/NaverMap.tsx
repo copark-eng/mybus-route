@@ -10,7 +10,9 @@ import { type Place, directionHint } from "../../lib/places";
 import type { OptionResult } from "../../lib/router";
 import { routeColor } from "../../lib/routeType";
 
-/** 네이버 지도 (검색·상세 화면에서만). 마운트 시 1회 초기화, 언마운트 시 destroy */
+const placeKey = (p: Place | null) => (p ? `${p.lat.toFixed(6)},${p.lng.toFixed(6)}` : "-");
+
+/** 네이버 지도 (검색·상세·노선 화면). 마운트 시 1회 초기화, 언마운트 시 destroy */
 export function NaverMap(props: ComponentProps<typeof NaverMapInner>) {
   return (
     <ErrorBoundary fallback={<div className={`map map-missing ${props.className ?? ""}`} data-testid="map">지도를 표시하지 못했습니다.</div>}>
@@ -64,9 +66,16 @@ function NaverMapInner({ from, to, path, line, buses, onPick, className = "" }: 
     };
   }, [db, canPick]);
 
+  // 출발·도착이 실제로 바뀔 때만 지도를 옮긴다. 화면이 1초마다 다시 그려지며 같은 값의 새 객체를 넘겨도
+  // 지도를 다시 맞추지 않는다 (노선 화면에서 지도를 움직여도 제자리로 돌아가던 문제)
+  const endpointKey = `${placeKey(from)}|${placeKey(to)}`;
+  const fromRef = useRef(from);
+  const toRef = useRef(to);
+  fromRef.current = from;
+  toRef.current = to;
   useEffect(() => {
-    try { view?.setEndpoints(from, to); } catch (e) { console.warn("지도 표시 실패", e); }
-  }, [view, from, to]);
+    try { view?.setEndpoints(fromRef.current, toRef.current); } catch (e) { console.warn("지도 표시 실패", e); }
+  }, [view, endpointKey]);
 
   // 경로(승차~하차 구간)를 도로 형상으로 그린다 (ADR-029). 형상을 받기 전에는 정류장 직선을 먼저 보여 준다
   useEffect(() => {

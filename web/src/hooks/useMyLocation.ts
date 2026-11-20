@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
-
-/** 내 위치 (ADR-030). enabled 동안 브라우저 위치를 계속 받는다 (watchPosition) */
+/** 내 위치 (ADR-030, ADR-035): 버튼을 누를 때 한 번만 받는다 (계속 따라가지 않음) */
 export interface MyLocation {
   lat: number;
   lng: number;
@@ -80,25 +78,4 @@ export function getMyLocation(): Promise<MyLocation> {
       OPTIONS,
     );
   });
-}
-
-export function useMyLocation(enabled: boolean): { location: MyLocation | null; error: LocationError | null } {
-  const [location, setLocation] = useState<MyLocation | null>(null);
-  const [error, setError] = useState<LocationError | null>(null);
-
-  useEffect(() => {
-    if (!enabled) return;
-    if (!("geolocation" in navigator)) { setError("unsupported"); return; }
-    const id = navigator.geolocation.watchPosition(
-      (p) => {
-        setError(null);
-        setLocation({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, at: p.timestamp });
-      },
-      (e) => setError(toError(e)),
-      OPTIONS,
-    );
-    return () => navigator.geolocation.clearWatch(id);
-  }, [enabled]);
-
-  return { location, error };
 }

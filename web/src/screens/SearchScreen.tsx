@@ -17,14 +17,11 @@ import { fetchArrivals, type StationArrivals } from "../lib/api";
 import type { Station } from "../lib/data";
 import { type Place, samePlace } from "../lib/places";
 import { findPlans } from "../lib/router";
-import { distanceM } from "../lib/data";
 import { isMine, myLocationPlace } from "../lib/places";
 import {
-  deviceKind, getMyLocation, LOCATION_ERROR_TEXT, type LocationError, locationPermission, PERMISSION_STEPS, useMyLocation,
+  deviceKind, getMyLocation, LOCATION_ERROR_TEXT, type LocationError, locationPermission, PERMISSION_STEPS,
 } from "../hooks/useMyLocation";
 
-/** 내 위치가 이만큼 바뀌면 출발지를 옮기고 경로를 다시 찾는다 */
-const MOVE_THRESHOLD_M = 30;
 /** 이보다 빨리 거절되면 허용 팝업이 뜨지 않은 것으로 본다 */
 const INSTANT_DENY_MS = 700;
 
@@ -84,28 +81,12 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
 
   const refreshAll = () => { opts.refresh(); void boardRefresh.runNow(); };
 
-  // ---- 내 위치 (ADR-030): 출발(또는 도착)이 내 위치면 화면이 보이는 동안 계속 따라간다 ----
-  const tracking = isMine(from) || isMine(to);
-  const my = useMyLocation(tracking && live);
+  // ---- 내 위치 (ADR-030, ADR-035): 버튼을 누를 때 한 번만 받는다. 움직여도 자동으로 따라가지 않는다 ----
+  //      (계속 따라가면 위치가 바뀔 때마다 경로·도착정보를 다시 조회해 호출이 늘어난다)
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
   /** 권한이 막혀 있을 때 기기별 허용 방법을 보여 준다 */
   const [locHelp, setLocHelp] = useState(false);
-  useEffect(() => {
-    if (my.error) {
-      setLocError(LOCATION_ERROR_TEXT[my.error]);
-      if (my.error === "denied") setLocHelp(true);
-    }
-  }, [my.error]);
-  useEffect(() => {
-    const loc = my.location;
-    if (!loc) return;
-    // 30m 넘게 움직였을 때만 바꾼다 (바꿀 때마다 경로를 다시 계산하므로)
-    const follow = (p: Place | null) =>
-      p && isMine(p) && distanceM(p.lat, p.lng, loc.lat, loc.lng) > MOVE_THRESHOLD_M ? myLocationPlace(loc.lat, loc.lng) : p;
-    setFrom(follow);
-    setTo(follow);
-  }, [my.location]);
   const useMyLocationAsFrom = async () => {
     setLocating(true);
     setLocError(null);
@@ -183,12 +164,10 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
             disabled={locating}
             data-testid="my-location"
           >
-            📍 {locating ? "위치 찾는 중…" : isMine(from) ? "내 위치에서 출발 (실시간)" : "내 위치에서 출발"}
+            📍 {locating ? "위치 찾는 중…" : isMine(from) ? "내 위치 다시 찾기" : "내 위치에서 출발"}
           </button>
-          {tracking && my.location && (
-            <span className="muted small" data-testid="my-location-status">
-              {my.location.accuracy > 100 ? `정확도 약 ${Math.round(my.location.accuracy)}m` : "위치 따라가는 중"}
-            </span>
+          {isMine(from) && (
+            <span className="muted small" data-testid="my-location-status">움직였다면 다시 눌러 주세요</span>
           )}
         </div>
         {locError && <p className="msg small" role="alert" data-testid="my-location-error">{locError}</p>}
@@ -213,7 +192,7 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
 
       <div className="split-body sheet">
         {plans.length > 0 && (
-          <RefreshStatus lastUpdated={opts.lastUpdated} loading={opts.loading} now={now} error={opts.error} onRefresh={refreshAll} />
+          <RefreshStatus lastUpdated={opts.lastUpdated} loading={opts.loading} now={now} error={opts.error} onRefresh={refreshAll} paused={opts.paused} />
         )}
         {message && (
           <div className="msg" data-testid="search-message">

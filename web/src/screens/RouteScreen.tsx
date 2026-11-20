@@ -76,8 +76,11 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
       return p ? [{ lat: p[0], lng: p[1], label: `${route.name}번 ${v.bus.plateNo ?? ""}` }] : [];
     });
   }, [db, route, shape, views]);
-  const mark = view.stationId ? db.stations.get(view.stationId) : undefined;
-  const markPlace = mark ? { kind: "station" as const, stationId: mark.id, label: mark.name, lat: mark.y, lng: mark.x } : null;
+  // 1초마다 다시 그려져도 같은 객체를 넘기도록 메모 (지도가 제자리로 돌아가지 않게)
+  const markPlace = useMemo(() => {
+    const mark = view.stationId ? db.stations.get(view.stationId) : undefined;
+    return mark ? { kind: "station" as const, stationId: mark.id, label: mark.name, lat: mark.y, lng: mark.x } : null;
+  }, [db, view.stationId]);
 
   if (!route) {
     return (
@@ -98,7 +101,7 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
         <h1 className="topbar-title">{route.name}번 노선</h1>
       </header>
       <RouteInfo route={route} buses={buses} failed={!!error && buses === null} />
-      <RefreshStatus lastUpdated={refresh.lastRun} loading={refresh.running} now={now} error={error} onRefresh={() => void refresh.runNow()} intervalMs={REFRESH_MS} />
+      <RefreshStatus lastUpdated={refresh.lastRun} loading={refresh.running} now={now} error={error} onRefresh={() => void refresh.runNow()} intervalMs={REFRESH_MS} paused={refresh.paused} />
       {error && <p className="msg small" data-testid="route-error">버스 위치를 불러오지 못했습니다: {error}</p>}
       <NaverMap from={markPlace} to={null} line={route} buses={busMarkers} className="map-route" />
       <p className="muted small route-note">

@@ -56,7 +56,7 @@ export function HomeScreen({ nav }: { nav: Nav }) {
               ))}
             </ul>
             {!editing && (
-              <RefreshStatus lastUpdated={board.lastUpdated} loading={board.loading} now={now} error={board.error} onRefresh={board.refresh} />
+              <RefreshStatus lastUpdated={board.lastUpdated} loading={board.loading} now={now} error={board.error} onRefresh={board.refresh} paused={board.paused} />
             )}
           </section>
           <button type="button" className="search-entry" onClick={openSearch} data-testid="search-entry">

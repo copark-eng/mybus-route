@@ -70,5 +70,9 @@ export function directionHint(db: BusDb, s: Station): string {
   return best ? `${best[0]} 방면` : "";
 }
 
-/** 입력이 주소처럼 보이면 Geocoding 을 부른다 (ADR-019: 숫자나 로/길/동/읍/면/리 포함) */
-export const looksLikeAddress = (q: string) => /\d/.test(q) || /(로|길|동|읍|면|리|구|시)(\s|$)/.test(q);
+/**
+ * 입력이 주소처럼 보이면 Geocoding 을 부른다 (ADR-019: 숫자나 로/길/동/읍/면/리 포함).
+ * 숫자만 입력한 것은 정류장 번호(07015 등)이므로 부르지 않는다 (ADR-035: 불필요한 호출 줄이기)
+ */
+export const looksLikeAddress = (q: string) =>
+  !/^\s*\d+\s*$/.test(q) && (/\d/.test(q) || /(로|길|동|읍|면|리|구|시)(\s|$)/.test(q));

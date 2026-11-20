@@ -130,7 +130,7 @@ export function DetailScreen({ view, nav }: { view: DetailView; nav: Nav }) {
         <NaverMap from={from} to={to} path={result} className="map-detail" />
       </div>
       <div className="split-body">
-        <RefreshStatus lastUpdated={live.lastUpdated} loading={live.loading} now={now} error={live.error} onRefresh={live.refresh} />
+        <RefreshStatus lastUpdated={live.lastUpdated} loading={live.loading} now={now} error={live.error} onRefresh={live.refresh} paused={live.paused} />
       </div>
     </main>
   );

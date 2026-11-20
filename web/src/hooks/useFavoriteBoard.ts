@@ -68,8 +68,8 @@ export function useFavoriteBoard(favorites: Favorite[], enabled: boolean) {
     setStates(next);
   }, [db, plans]);
 
-  const { running, runNow } = useArrivalsRefresh(task, enabled && favorites.length > 0);
+  const { running, paused, runNow } = useArrivalsRefresh(task, enabled && favorites.length > 0);
   const get = useCallback((id: string): FavCardState => states.get(id) ?? LOADING, [states]);
   const refresh = useCallback(() => void runNow(), [runNow]);
-  return { get, loading: running, error, lastUpdated, refresh };
+  return { get, loading: running, paused, error, lastUpdated, refresh };
 }
