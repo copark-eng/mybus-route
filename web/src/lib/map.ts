@@ -1,6 +1,7 @@
 /** 네이버 지도 (ADR-002): 정류장 마커, 지도에서 출발지·도착지 고르기, 경로 표시 */
 import { config } from "./config";
 import type { BusDb, Station } from "./data";
+import { metersPerPixel, offsetRight } from "./offset";
 import type { Place } from "./places";
 import { esc } from "./util";
 
@@ -27,6 +28,9 @@ export interface MapView {
 }
 
 const MARKER_MIN_ZOOM = 16;
+/** 노선 선 두께와, 도로 가운데에서 오른쪽으로 옮기는 거리(px) (ADR-037) */
+const LINE_WEIGHT = 5;
+const LANE_PX = 4;
 
 export async function initMap(
   el: HTMLElement,
@@ -127,6 +131,17 @@ export async function initMap(
   let busMarkers: any[] = [];
   let stopMarker: any = null;
 
+  // ---- 노선 선은 도로 오른쪽으로 (ADR-037) ----
+  // 버스는 오른쪽 차로로 다니므로 도로 가운데선을 진행 방향 오른쪽으로 LANE_PX 만큼 옮겨 그린다.
+  // 화면 픽셀 기준이라 확대 단계가 바뀌면 다시 계산한다.
+  let pathSegs: { coords: [number, number][]; color: string }[] = [];
+  const toLatLngs = (cs: [number, number][]) => cs.map(([lat, lng]) => new naver.maps.LatLng(lat, lng));
+  const laneOffset = () => LANE_PX * metersPerPixel(map.getCenter().y, map.getZoom());
+  naver.maps.Event.addListener(map, "zoom_changed", () => {
+    const off = laneOffset();
+    lines.forEach((l, i) => { if (pathSegs[i]) l.setPath(toLatLngs(offsetRight(pathSegs[i].coords, off))); });
+  });
+
   return {
     setEndpoints(from, to) {
       endpointMarkers.forEach((m) => m.setMap(null));
@@ -155,11 +170,13 @@ export async function initMap(
     },
     showPath(segments) {
       lines.forEach((l) => l.setMap(null));
+      pathSegs = segments;
+      const off = laneOffset();
       lines = segments.map((s) => new naver.maps.Polyline({
         map,
-        path: s.coords.map(([lat, lng]) => new naver.maps.LatLng(lat, lng)),
+        path: toLatLngs(offsetRight(s.coords, off)),
         strokeColor: s.color,
-        strokeWeight: 5,
+        strokeWeight: LINE_WEIGHT,
         strokeOpacity: 0.85,
       }));
     },
