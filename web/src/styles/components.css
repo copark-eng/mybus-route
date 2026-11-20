@@ -365,3 +365,12 @@ button.card:hover { background: var(--surface-2); }
 .update-banner button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
 .bus-transit-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; line-height: 16px; }
 .bus-tag { padding: 0 5px; border-radius: 5px; background: var(--bg); color: var(--text-2); font-size: 10px; line-height: 15px; }
+
+/* 노선도 정류장 이름: 누르면 지도에서 보기 (ADR-036) */
+.stop-btn {
+  display: block; width: 100%; min-height: 32px; padding: 0; margin: 0;
+  border: 0; background: none; color: inherit; text-align: left; cursor: pointer;
+}
+.stop-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.stop-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.route-line .is-selected .stop-name { color: var(--accent); font-weight: 700; }

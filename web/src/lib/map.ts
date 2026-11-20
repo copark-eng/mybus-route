@@ -20,6 +20,8 @@ export interface MapView {
   /** 좌표들이 다 보이게 */
   fitTo(coords: [number, number][]): void;
   focus(lat: number, lng: number): void;
+  /** 정류장 하나로 이동·확대하고 강조 표시 (노선 화면에서 정류장을 눌렀을 때, ADR-036). null 이면 강조를 지운다 */
+  showStop(stop: { lat: number; lng: number; label: string } | null): void;
   /** 지도와 이벤트를 정리한다 (React 언마운트 시) */
   destroy(): void;
 }
@@ -123,6 +125,7 @@ export async function initMap(
   let endpointMarkers: any[] = [];
   let lines: any[] = [];
   let busMarkers: any[] = [];
+  let stopMarker: any = null;
 
   return {
     setEndpoints(from, to) {
@@ -185,12 +188,27 @@ export async function initMap(
     focus(lat, lng) {
       map.panTo(new naver.maps.LatLng(lat, lng));
     },
+    showStop(stop) {
+      stopMarker?.setMap(null);
+      stopMarker = null;
+      if (!stop) return;
+      const pos = new naver.maps.LatLng(stop.lat, stop.lng);
+      stopMarker = new naver.maps.Marker({
+        position: pos,
+        map,
+        title: stop.label,
+        icon: { content: `<div class="stop-focus"><span>${esc(stop.label)}</span></div>`, anchor: new naver.maps.Point(10, 10) },
+        zIndex: 300,
+      });
+      if (map.getZoom() < 17) map.setZoom(17, false);
+      map.panTo(pos);
+    },
     destroy() {
       // SDK 내부 상태(인증 실패 등)에 따라 예외가 날 수 있어 각각 감싼다
       const safe = (f: () => void) => { try { f(); } catch { /* 무시 */ } };
       safe(() => resize.disconnect());
       safe(() => info.close());
-      [...stationMarkers, ...endpointMarkers, ...lines, ...busMarkers].forEach((o) => safe(() => o.setMap(null)));
+      [...stationMarkers, ...endpointMarkers, ...lines, ...busMarkers, stopMarker].filter(Boolean).forEach((o) => safe(() => o.setMap(null)));
       safe(() => map.destroy());
     },
   };

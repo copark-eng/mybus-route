@@ -82,6 +82,16 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
     return mark ? { kind: "station" as const, stationId: mark.id, label: mark.name, lat: mark.y, lng: mark.x } : null;
   }, [db, view.stationId]);
 
+  // 노선도에서 정류장을 누르면 지도를 그 정류장으로 옮긴다 (ADR-036)
+  const [focusStop, setFocusStop] = useState<{ lat: number; lng: number; label: string; n: number; id: string } | null>(null);
+  const mapBox = useRef<HTMLDivElement>(null);
+  const onStopTap = useCallback((stationId: string) => {
+    const st = db.stations.get(stationId);
+    if (!st) return;
+    setFocusStop((old) => ({ lat: st.y, lng: st.x, label: st.name, n: (old?.n ?? 0) + 1, id: st.id }));
+    mapBox.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [db]);
+
   if (!route) {
     return (
       <main className="screen" data-testid="screen-route">
@@ -103,11 +113,14 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
       <RouteInfo route={route} buses={buses} failed={!!error && buses === null} />
       <RefreshStatus lastUpdated={refresh.lastRun} loading={refresh.running} now={now} error={error} onRefresh={() => void refresh.runNow()} intervalMs={REFRESH_MS} paused={refresh.paused} />
       {error && <p className="msg small" data-testid="route-error">버스 위치를 불러오지 못했습니다: {error}</p>}
-      <NaverMap from={markPlace} to={null} line={route} buses={busMarkers} className="map-route" />
+      <div ref={mapBox}>
+        <NaverMap from={markPlace} to={null} line={route} buses={busMarkers} focusStop={focusStop} className="map-route" />
+      </div>
       <p className="muted small route-note">
         버스 위치는 30초마다 갱신하고, 정류장 사이에서는 도로 거리와 평균 속도로 대략 어디쯤인지 보여 줍니다.
+        정류장 이름을 누르면 지도에서 그 위치를 보여 줍니다.
       </p>
-      <RouteLine route={route} views={views} segLens={segLens} highlight={view.stationId} />
+      <RouteLine route={route} views={views} segLens={segLens} highlight={view.stationId} selected={focusStop?.id} onStopTap={onStopTap} />
     </main>
   );
 }
@@ -219,11 +232,14 @@ function BusInTransit({ v, segLen }: { v: BusView; segLen: number }) {
   );
 }
 
-function RouteLine({ route, views, segLens, highlight }: {
+function RouteLine({ route, views, segLens, highlight, selected, onStopTap }: {
   route: Route;
   views: BusView[];
   segLens: number[];
   highlight?: string;
+  /** 지도에 띄운 정류장 (눌러서 고른 것) */
+  selected?: string;
+  onStopTap?(stationId: string): void;
 }) {
   const db = useDb();
   const { turn, last } = endpoints(route);
@@ -264,17 +280,31 @@ function RouteLine({ route, views, segLens, highlight }: {
             <li
               key={`s${i}`}
               ref={isMark ? mark : undefined}
-              className={`stop${here.length ? " has-bus" : ""}${isMark ? " is-mark" : ""}${!st?.no ? " is-virtual" : ""}`}
+              className={`stop${here.length ? " has-bus" : ""}${isMark ? " is-mark" : ""}${!st?.no ? " is-virtual" : ""}${selected === id ? " is-selected" : ""}`}
               data-testid="route-stop"
             >
               <span className="stop-dot-line" aria-hidden />
               <span className="stop-body">
-                <span className="stop-name">
-                  {st?.name ?? id}
-                  {st?.no && <span className="muted small"> {st.no}</span>}
-                  {i === turn && <span className="tag">회차</span>}
-                  {isMark && <span className="tag tag-mark">내 정류장</span>}
-                </span>
+                {st && onStopTap ? (
+                  <button
+                    type="button"
+                    className="stop-name stop-btn"
+                    aria-label={`${st.name}${st.no ? ` ${st.no}` : ""} 지도에서 보기`}
+                    onClick={() => onStopTap(id)}
+                  >
+                    {st.name}
+                    {st.no && <span className="muted small"> {st.no}</span>}
+                    {i === turn && <span className="tag">회차</span>}
+                    {isMark && <span className="tag tag-mark">내 정류장</span>}
+                  </button>
+                ) : (
+                  <span className="stop-name">
+                    {st?.name ?? id}
+                    {st?.no && <span className="muted small"> {st.no}</span>}
+                    {i === turn && <span className="tag">회차</span>}
+                    {isMark && <span className="tag tag-mark">내 정류장</span>}
+                  </span>
+                )}
                 {here.map((v) => <BusAtStop key={v.key} bus={v.bus} />)}
               </span>
             </li>,

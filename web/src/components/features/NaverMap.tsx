@@ -21,7 +21,7 @@ export function NaverMap(props: ComponentProps<typeof NaverMapInner>) {
   );
 }
 
-function NaverMapInner({ from, to, path, line, buses, onPick, className = "" }: {
+function NaverMapInner({ from, to, path, line, buses, focusStop, onPick, className = "" }: {
   from: Place | null;
   to: Place | null;
   path?: OptionResult | null;
@@ -29,6 +29,8 @@ function NaverMapInner({ from, to, path, line, buses, onPick, className = "" }: 
   line?: Route | null;
   /** 운행 중 버스 위치 */
   buses?: { lat: number; lng: number; label: string }[];
+  /** 이 정류장으로 이동·확대하고 강조 (노선 화면에서 정류장을 누름, ADR-036). n 이 바뀔 때마다 다시 이동 */
+  focusStop?: { lat: number; lng: number; label: string; n: number } | null;
   onPick?(p: Place, role: "from" | "to"): void;
   className?: string;
 }) {
@@ -111,6 +113,13 @@ function NaverMapInner({ from, to, path, line, buses, onPick, className = "" }: 
     if (!view) return;
     try { view.showBuses(buses ?? []); } catch (e) { console.warn("버스 표시 실패", e); }
   }, [view, buses]);
+
+  const focusRef = useRef(focusStop);
+  focusRef.current = focusStop;
+  useEffect(() => {
+    if (!view || !focusRef.current) return;
+    try { view.showStop(focusRef.current); } catch (e) { console.warn("정류장 표시 실패", e); }
+  }, [view, focusStop?.n]);
 
   if (failed) {
     return <div className={`map map-missing ${className}`} data-testid="map">{failed}</div>;
