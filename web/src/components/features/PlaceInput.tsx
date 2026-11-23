@@ -28,6 +28,26 @@ export const PlaceInput = forwardRef<PlaceInputHandle, {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const latestQuery = useRef("");
+  const box = useRef<HTMLDivElement>(null);
+  /** 키패드만 내릴 때(blur) 추천 목록은 그대로 둔다 (ADR-038) */
+  const keepOpen = useRef(false);
+  const [focused, setFocused] = useState(false);
+
+  const hideKeyboard = () => {
+    if (document.activeElement !== inputRef.current) return;
+    keepOpen.current = true;
+    inputRef.current?.blur();
+  };
+
+  // 키패드를 내린 채 목록이 열려 있으면, 입력·목록 바깥을 눌렀을 때 닫는다
+  useEffect(() => {
+    if (!open || focused) return;
+    const onDown = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open, focused]);
 
   useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }), []);
 
@@ -82,7 +102,7 @@ export const PlaceInput = forwardRef<PlaceInputHandle, {
 
   const tag = role === "from" ? "출발" : "도착";
   return (
-    <div className={`place-input place-${role}`}>
+    <div ref={box} className={`place-input place-${role}`}>
       <span className={`place-dot dot-${role}`} aria-hidden="true" />
       <input
         ref={inputRef}
@@ -99,8 +119,12 @@ export const PlaceInput = forwardRef<PlaceInputHandle, {
         value={text}
         data-testid={`input-${role}`}
         onChange={(e) => onInput(e.target.value)}
-        onFocus={(e) => e.target.select()}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onFocus={(e) => { setFocused(true); keepOpen.current = false; e.target.select(); }}
+        onBlur={() => {
+          setFocused(false);
+          if (keepOpen.current) { keepOpen.current = false; return; }
+          setTimeout(() => setOpen(false), 150);
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -123,7 +147,19 @@ export const PlaceInput = forwardRef<PlaceInputHandle, {
           <span aria-hidden="true">×</span>
         </button>
       )}
-      <ul id={listId} role="listbox" className="suggest" hidden={!open} data-testid={`suggest-${role}`}>
+      <div className="suggest" hidden={!open} onTouchMove={hideKeyboard} onScroll={hideKeyboard}>
+      {focused && (
+        <button
+          type="button"
+          className="suggest-kbd"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={hideKeyboard}
+          data-testid={`hide-keyboard-${role}`}
+        >
+          추천 {items.length}개 <span>키패드 내리기 ⌄</span>
+        </button>
+      )}
+      <ul id={listId} role="listbox" data-testid={`suggest-${role}`}>
         {items.map((s, i) => (
           <li
             key={`${s.place.kind}-${s.place.label}-${i}`}
@@ -140,6 +176,7 @@ export const PlaceInput = forwardRef<PlaceInputHandle, {
           </li>
         ))}
       </ul>
+      </div>
     </div>
   );
 });

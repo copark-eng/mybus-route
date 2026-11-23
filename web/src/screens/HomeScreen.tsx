@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Nav } from "../App";
 import { FavoriteCard } from "../components/features/FavoriteCard";
 import { RecentPairs } from "../components/features/RecentPairs";
+import { RouteFinder } from "../components/features/RouteFinder";
 import { RefreshStatus } from "../components/features/RefreshStatus";
 import { WeatherLine } from "../components/features/WeatherLine";
 import { EmptyState } from "../components/ui";
@@ -10,7 +11,7 @@ import { useCountdown } from "../hooks/useCountdown";
 import { useFavoriteBoard } from "../hooks/useFavoriteBoard";
 import { useVisible } from "../hooks/useVisible";
 
-/** 홈 (ADR-022): 날씨 → 즐겨찾기 카드 → 검색 진입 → 최근 검색 → 푸터 */
+/** 홈 (ADR-022): 날씨 → 즐겨찾기 카드 → 검색 진입 → 노선 바로 보기(ADR-038) → 최근 검색 → 푸터 */
 export function HomeScreen({ nav }: { nav: Nav }) {
   const db = useDb();
   const store = useStore();
@@ -71,6 +72,9 @@ export function HomeScreen({ nav }: { nav: Nav }) {
           </button>
         </section>
       )}
+
+      {/* 버스 번호로 노선 바로 보기 (ADR-038) */}
+      <RouteFinder onOpen={(routeId) => nav.navigate({ name: "route", routeId })} />
 
       <RecentPairs
         pairs={store.pairs}
