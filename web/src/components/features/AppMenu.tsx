@@ -17,7 +17,11 @@ const ITEMS: { name: DocView["name"]; label: string }[] = [
 ];
 
 /** 모든 화면 오른쪽 위 ☰ 버튼 + 펼침 메뉴. 바깥을 누르거나 Esc 로 닫힌다 */
-export function AppMenu({ onOpen }: { onOpen(name: DocView["name"]): void }) {
+export function AppMenu({ onOpen, onBus }: {
+  onOpen(name: DocView["name"]): void;
+  /** 🚌 버튼: 버스 번호 검색 화면으로 (ADR-039). 그 화면에서는 주지 않는다 */
+  onBus?(): void;
+}) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const first = useRef<HTMLButtonElement>(null);
@@ -37,6 +41,11 @@ export function AppMenu({ onOpen }: { onOpen(name: DocView["name"]): void }) {
 
   return (
     <div className="app-menu" ref={box}>
+      {onBus && (
+        <button type="button" className="app-menu-btn app-bus-btn" aria-label="버스 번호로 노선 찾기" title="버스 검색" onClick={() => { setOpen(false); onBus(); }} data-testid="bus-search-btn">
+          <span aria-hidden>🚌</span>
+        </button>
+      )}
       <button
         type="button"
         className="app-menu-btn"

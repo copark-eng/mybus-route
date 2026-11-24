@@ -12,6 +12,7 @@ import { HomeScreen } from "./screens/HomeScreen";
 import { RouteScreen } from "./screens/RouteScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { PrivacyScreen } from "./screens/PrivacyScreen";
+import { BusSearchScreen } from "./screens/BusSearchScreen";
 import { AppMenu } from "./components/features/AppMenu";
 
 export type SearchView = { name: "search"; from?: Place; to?: Place; auto?: boolean; focus?: boolean };
@@ -22,7 +23,9 @@ export type DetailView =
 export type RouteView = { name: "route"; routeId: string; stationId?: string };
 /** 메뉴에서 여는 문서 화면 (ADR-033) */
 export type DocView = { name: "privacy" };
-export type View = { name: "home" } | SearchView | DetailView | RouteView | DocView;
+/** 버스 번호로 노선 찾기 (ADR-039) */
+export type BusSearchView = { name: "buses" };
+export type View = { name: "home" } | SearchView | DetailView | RouteView | DocView | BusSearchView;
 
 export interface Nav {
   navigate(v: View): void;
@@ -36,6 +39,7 @@ function hashOf(v: View): string {
   if (v.name === "detail") return v.kind === "favorite" ? `#fav/${encodeURIComponent(v.favoriteId)}` : "#route";
   if (v.name === "route") return `#bus/${v.routeId}${v.stationId ? `/${v.stationId}` : ""}`;
   if (v.name === "privacy") return "#privacy";
+  if (v.name === "buses") return "#buses";
   return location.pathname + location.search;
 }
 
@@ -46,6 +50,7 @@ function viewFromHash(): View {
   const bus = /^#bus\/(\d+)(?:\/(\d+))?$/.exec(location.hash);
   if (bus) return { name: "route", routeId: bus[1], stationId: bus[2] };
   if (location.hash === "#privacy") return { name: "privacy" };
+  if (location.hash === "#buses") return { name: "buses" };
   return HOME;
 }
 
@@ -147,14 +152,22 @@ export function App() {
           </ErrorBoundary>
         )}
         {v.name === "privacy" && <PrivacyScreen nav={nav} />}
+        {v.name === "buses" && (
+          <ErrorBoundary key={`buses-${cur.idx}`} fallback={<ScreenError onHome={() => navigate(HOME)} />}>
+            <BusSearchScreen nav={nav} />
+          </ErrorBoundary>
+        )}
         {newVersion && (
           <div className="update-banner" role="status" data-testid="update-banner">
             <span>새 버전이 나왔습니다</span>
             <button type="button" onClick={() => location.reload()}>새로고침</button>
           </div>
         )}
-        {/* 모든 화면 오른쪽 위 ☰ 메뉴 (ADR-033) */}
-        <AppMenu onOpen={(name) => { if (v.name !== name) navigate({ name }); }} />
+        {/* 모든 화면 오른쪽 위 🚌 버스 검색(ADR-039) + ☰ 메뉴 (ADR-033) */}
+        <AppMenu
+          onOpen={(name) => { if (v.name !== name) navigate({ name }); }}
+          onBus={v.name === "buses" ? undefined : () => navigate({ name: "buses" })}
+        />
         </RouteLinkContext.Provider>
       </StoreContext.Provider>
     </DbContext.Provider>

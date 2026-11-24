@@ -337,7 +337,8 @@ button.card:hover { background: var(--surface-2); }
 .loc-help-actions { display: flex; gap: 8px; }
 
 /* ---- ☰ 메뉴와 문서 화면 (ADR-033) ---- */
-.app-menu { position: fixed; top: max(8px, env(safe-area-inset-top)); right: 8px; z-index: 50; }
+.app-menu { position: fixed; top: max(8px, env(safe-area-inset-top)); right: 8px; z-index: 50; display: flex; gap: 8px; }
+.app-bus-btn { font-size: 18px; }
 .app-menu-btn {
   width: 44px; height: 44px; border: 0; border-radius: 50%; cursor: pointer;
   background: var(--bg); color: var(--text-1); font-size: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.15);
@@ -353,7 +354,7 @@ button.card:hover { background: var(--surface-2); }
 }
 .app-menu-list button:hover, .app-menu-list button:focus-visible { background: var(--surface); outline: none; }
 /* 오른쪽 위 ☰ 와 겹치지 않게 상단 바 오른쪽을 비운다 */
-.topbar { padding-right: 52px; }
+.topbar { padding-right: 104px; } /* 🚌 + ☰ (ADR-039) */
 .screen.home { padding-top: 52px; }
 .doc { display: grid; gap: 10px; font: var(--fs-body); padding-bottom: 32px; }
 .doc h2 { font: var(--fs-heading); margin: 14px 0 0; }
@@ -403,3 +404,7 @@ button.card:hover { background: var(--surface-2); }
 .route-hit-ends { font: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .route-hit-main small { font: var(--fs-caption); }
 .route-hits-empty { margin-top: var(--sp-2); }
+/* 버스 검색 화면 (ADR-039) */
+.bus-search .route-finder { margin-top: var(--sp-2); }
+.bus-search .route-hits { max-height: none; }
+.bus-search-note { margin-top: var(--sp-3); }
