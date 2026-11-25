@@ -7,7 +7,7 @@ import { RefreshStatus } from "../components/features/RefreshStatus";
 import { RouteOptionCard } from "../components/features/RouteOptionCard";
 import { SearchForm, type SearchMode } from "../components/features/SearchForm";
 import { RouteWeather } from "../components/features/WeatherLine";
-import { Button, IconButton } from "../components/ui";
+import { Button, IconButton, Segmented } from "../components/ui";
 import { useDb, useStore } from "../context";
 import { useArrivalsRefresh } from "../hooks/useArrivalsRefresh";
 import { useCountdown } from "../hooks/useCountdown";
@@ -16,7 +16,8 @@ import { useVisible } from "../hooks/useVisible";
 import { fetchArrivals, type StationArrivals } from "../lib/api";
 import type { Station } from "../lib/data";
 import { type Place, samePlace } from "../lib/places";
-import { findPlans } from "../lib/router";
+import { compareBy, type SortMode } from "../lib/fare";
+import { findPlans, type OptionResult } from "../lib/router";
 import { isMine, myLocationPlace } from "../lib/places";
 import {
   deviceKind, getMyLocation, LOCATION_ERROR_TEXT, type LocationError, locationPermission, PERMISSION_STEPS,
@@ -26,6 +27,15 @@ import {
 const INSTANT_DENY_MS = 700;
 /** 경로 검색 결과 자동 갱신 주기 (ADR-040). 남은 시간은 화면에서 1초마다 줄어드니 60초로도 충분하다 */
 const SEARCH_REFRESH_MS = 60_000;
+/** 경로 결과 정렬 (ADR-041). 고른 정렬은 이 기기에 기억한다 */
+const SORT_KEY = "mybus.sort";
+function loadSort(): SortMode {
+  try {
+    const v = localStorage.getItem(SORT_KEY);
+    if (v === "best" || v === "fast" || v === "cheap") return v;
+  } catch { /* 저장소를 못 쓰면 기본값 */ }
+  return "best";
+}
 
 /** 검색 화면: 입력 + 지도 + 결과 카드 + 출발 정류장 도착판. 상세로 갈 때는 숨겨서 상태를 유지한다 */
 export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav; active: boolean }) {
@@ -60,7 +70,11 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
-  const opts = useLiveOptions(plans, live, 8, SEARCH_REFRESH_MS);
+  // 정렬을 바꿔도 다시 조회하지 않게 후보를 전부(최대 12) 받아 두고, 화면에서 정렬해 8개만 보여 준다 (ADR-041)
+  const [sort, setSortState] = useState<SortMode>(loadSort);
+  const rank = useCallback((a: OptionResult, b: OptionResult) => compareBy(sort, a, b), [sort]);
+  const opts = useLiveOptions(plans, live, 12, SEARCH_REFRESH_MS, rank);
+  const setSort = (m: SortMode) => { setSortState(m); try { localStorage.setItem(SORT_KEY, m); } catch { /* 저장 못 해도 동작 */ } };
   useEffect(() => setHover(null), [plans]);
 
   // ---- 출발 정류장 도착판 (FR-4.5) ----
@@ -128,7 +142,7 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
     (role === "from" ? setFrom : setTo)((old) => (old && samePlace(old, p) ? old : p));
   }, []);
 
-  const shown = opts.results;
+  const shown = useMemo(() => [...opts.results].sort(rank).slice(0, 8), [opts.results, rank]);
   const pathResult = shown[hover ?? 0] ?? null;
 
   let message: string | null = null;
@@ -204,6 +218,23 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
               <Button variant="primary" onClick={opts.refresh}>다시 시도</Button>
             )}
           </div>
+        )}
+        {shown.length > 0 && (
+          <Segmented
+            label="정렬"
+            testId="sort-toggle"
+            className="sort-toggle"
+            value={sort}
+            onChange={setSort}
+            options={[
+              { value: "best", label: "추천" },
+              { value: "fast", label: "빠른 순" },
+              { value: "cheap", label: "요금 적은 순" },
+            ]}
+          />
+        )}
+        {shown.length > 0 && sort === "best" && (
+          <p className="muted small sort-note">빠른 시간과 요금을 함께 봅니다. 1,000원 더 비싼 버스는 10분 이상 빨라야 앞에 둡니다.</p>
         )}
         {shown.length > 0 && (
           <ul className="option-list" data-testid="route-options">

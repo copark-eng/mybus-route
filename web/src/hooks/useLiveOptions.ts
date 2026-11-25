@@ -25,7 +25,13 @@ export interface LiveOptions {
  * 자동 갱신은 위쪽 결과 REFRESH_TOP 개만 다시 평가한다. 나머지는 앞서 받은 값으로 카운트다운한다.
  * 수동 새로고침(↻)은 다시 전체를 본다.
  */
-export function useLiveOptions(plans: RoutePlan[], enabled: boolean, limit = 8, intervalMs?: number): LiveOptions {
+export function useLiveOptions(
+  plans: RoutePlan[], enabled: boolean, limit = 8, intervalMs?: number,
+  /** 화면에 보이는 순서 (요금 정렬 등, ADR-041). 자동 갱신은 이 순서로 위쪽 REFRESH_TOP 개를 다시 본다 */
+  rank: (a: OptionResult, b: OptionResult) => number = compareOptions,
+): LiveOptions {
+  const rankRef = useRef(rank);
+  rankRef.current = rank;
   const db = useDb();
   const [state, setState] = useState<{ plans: RoutePlan[]; results: OptionResult[]; done: boolean; error: string | null; at: number }>(
     { plans, results: [], done: false, error: null, at: 0 },
@@ -47,7 +53,8 @@ export function useLiveOptions(plans: RoutePlan[], enabled: boolean, limit = 8, 
     const id = ++reqId.current;
     const prev = last.current?.plans === plans ? last.current.results : null;
     const doFull = full.current || !prev;
-    const target = doFull ? plans : prev.slice(0, REFRESH_TOP).map((r) => r.plan);
+    const top = doFull ? [] : [...prev].sort(rankRef.current).slice(0, REFRESH_TOP);
+    const target = doFull ? plans : top.map((r) => r.plan);
     try {
       // 자동 갱신은 하차 정류장을 최근 값으로 (ADR-040). 첫 평가·수동 새로고침은 전부 새로 받는다
       const fresh = await evaluate(db, target, { reuseAlightMs: doFull ? 0 : ALIGHT_REUSE_MS });
@@ -57,7 +64,7 @@ export function useLiveOptions(plans: RoutePlan[], enabled: boolean, limit = 8, 
         results = fresh.slice(0, limit);
       } else {
         // 다시 본 위쪽 결과 + 나머지(이전 값) 를 합쳐 다시 정렬 (운행 종료로 빠진 것은 빠진 대로)
-        const kept = prev.slice(REFRESH_TOP);
+        const kept = prev.filter((r) => !top.includes(r));
         results = [...fresh, ...kept].sort(compareOptions).slice(0, limit);
       }
       full.current = false;

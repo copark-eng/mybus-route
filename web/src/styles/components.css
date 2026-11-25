@@ -408,3 +408,9 @@ button.card:hover { background: var(--surface-2); }
 .bus-search .route-finder { margin-top: var(--sp-2); }
 .bus-search .route-hits { max-height: none; }
 .bus-search-note { margin-top: var(--sp-3); }
+/* ---- 요금과 정렬 (ADR-041) ---- */
+.option-fare { margin-left: auto; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.option-fare.is-premium { color: var(--route-express); font-weight: 600; }
+.sort-toggle { margin-bottom: var(--sp-2); }
+.sort-toggle button { min-height: 36px; }
+.sort-note { margin: 0 0 var(--sp-2); }

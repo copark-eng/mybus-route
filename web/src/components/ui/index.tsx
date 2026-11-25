@@ -23,14 +23,16 @@ export function Badge({ tone, children }: { tone: "est" | "live" | "muted"; chil
 
 export interface SegOption<T extends string> { value: T; label: string }
 
-export function Segmented<T extends string>({ options, value, onChange, label }: {
+export function Segmented<T extends string>({ options, value, onChange, label, testId = "mode-toggle", className = "" }: {
   options: SegOption<T>[];
   value: T;
   onChange(v: T): void;
   label: string;
+  testId?: string;
+  className?: string;
 }) {
   return (
-    <div className="seg" role="radiogroup" aria-label={label} data-testid="mode-toggle">
+    <div className={`seg ${className}`.trim()} role="radiogroup" aria-label={label} data-testid={testId}>
       {options.map((o) => (
         <button
           key={o.value}

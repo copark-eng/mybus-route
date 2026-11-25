@@ -4,6 +4,7 @@ import { NaverMap } from "../components/features/NaverMap";
 import { RefreshStatus } from "../components/features/RefreshStatus";
 import { StepList } from "../components/features/StepList";
 import { TimeBar } from "../components/features/TimeBar";
+import { fmtWon } from "../lib/fare";
 import { RouteWeather } from "../components/features/WeatherLine";
 import { Badge, Button, EmptyState, IconButton } from "../components/ui";
 import { useDb, useStore } from "../context";
@@ -112,6 +113,9 @@ export function DetailScreen({ view, nav }: { view: DetailView; nav: Nav }) {
               </div>
               <p className="summary-sub">
                 {result.legs[0].from.name}에서 <b className="num">{board === null ? "-" : fmtDepart(board)}</b>
+              </p>
+              <p className="small muted" data-testid="detail-fare">
+                요금 {result.fare.won === null ? "별도 (공항·시외버스)" : `약 ${fmtWon(result.fare.won)}`} · 성인 교통카드, 환승 할인 반영
               </p>
               {result.note && <p className="small muted">{result.note}</p>}
             </section>

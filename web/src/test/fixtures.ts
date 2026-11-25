@@ -85,6 +85,7 @@ export function makeResult(over: {
     plan,
     legs,
     arriveSec: over.arriveSec !== undefined ? over.arriveSec : lastAlight === null ? null : lastAlight + plan.walkEndSec,
+    fare: { won: 1650, premium: false },
     estimated: legs.some((l) => l.boardEstimated || l.rideEstimated),
     notRunning: false,
     evaluatedAt: over.evaluatedAt ?? 1_000_000,

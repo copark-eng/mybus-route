@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { remaining } from "../../hooks/useCountdown";
+import { fmtWon } from "../../lib/fare";
 import type { OptionResult } from "../../lib/router";
 import { fmtClock, fmtMin, fmtWait } from "../../lib/util";
 import { Badge } from "../ui";
@@ -48,6 +49,9 @@ export function RouteOptionCard({ result: r, now, onOpen, onHover, favorite }: {
           <span className="muted small">
             {r.legs.length > 1 ? "환승 1회" : "직행"}
             {walk > 0 ? ` · 도보 ${fmtMin(walk)}` : ""}
+          </span>
+          <span className={`option-fare small${r.fare.premium ? " is-premium" : ""}`} data-testid="option-fare">
+            {r.fare.won === null ? "요금 별도" : `약 ${fmtWon(r.fare.won)}`}
           </span>
         </span>
         <TimeBar result={r} now={now} size="md" />

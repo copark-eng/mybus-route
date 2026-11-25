@@ -5,6 +5,7 @@
  *  3. 최종 도착 시각 → 환승 횟수 → 도보 시간 순으로 정렬한다 (ADR-009)
  */
 import { fetchArrivals, peekArrivals, type RouteArrival, type StationArrivals } from "./api";
+import { estimateFare, type Fare } from "./fare";
 import { type BusDb, type Route, type Station, stationDistance, walkSeconds } from "./data";
 import type { Place } from "./places";
 
@@ -55,6 +56,8 @@ export interface OptionResult {
   plan: RoutePlan;
   legs: LegResult[];
   arriveSec: number | null; // 지금부터 최종 도착까지 (초)
+  /** 추정 요금 (성인 카드, ADR-041) */
+  fare: Fare;
   estimated: boolean;
   /** 실시간 예측도 없고 운행 시간도 아닌 구간이 있음 → 결과에서 뺀다 */
   notRunning: boolean;
@@ -325,6 +328,7 @@ function evaluatePlan(db: BusDb, plan: RoutePlan, arrivals: Map<string, StationA
     plan,
     legs,
     arriveSec: t + plan.walkEndSec,
+    fare: estimateFare(db, plan.legs),
     estimated,
     notRunning,
     evaluatedAt: now,
