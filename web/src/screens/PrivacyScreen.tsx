@@ -3,9 +3,10 @@ import type { Nav } from "../App";
 import { IconButton } from "../components/ui";
 
 // 위치정보 관리책임자·문의 항목은 2026-11-19 사용자 요청으로 뺐다. 다시 넣을 때는 ADR-033 참고
-export const PRIVACY_EFFECTIVE_DATE = "2026년 11월 20일";
+// 2026-11-25: 내 위치를 한 번만 받는 것으로 바뀐 동작(ADR-035)과 지도·주소 검색 제공자(카카오, ADR-044)를 반영
+export const PRIVACY_EFFECTIVE_DATE = "2026년 11월 25일";
 
-/** 개인위치정보 처리방침 (ADR-033). 실제 앱 동작(ADR-030, 032, 033)과 일치해야 한다 */
+/** 개인위치정보 처리방침 (ADR-033). 실제 앱 동작(ADR-030, 033, 035, 044)과 일치해야 한다 */
 export function PrivacyScreen({ nav }: { nav: Nav }) {
   const title = useRef<HTMLHeadingElement>(null);
   useEffect(() => title.current?.focus({ preventScroll: true }), []);
@@ -27,7 +28,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
         <h2>1. 수집하는 위치정보와 수집 방법</h2>
         <ul>
           <li><b>내 위치(기기의 현재 위치)</b>: 이용자가 검색 화면의 "📍 내 위치에서 출발"을 눌러 브라우저의 위치 사용을 허용한 경우에만 받습니다.</li>
-          <li>출발지가 내 위치로 정해져 있고 검색 화면이 열려 있는 동안 위치를 계속 받아, 30m 이상 움직이면 출발지를 바꿉니다. 화면을 닫거나 다른 앱으로 넘어가면 받지 않습니다.</li>
+          <li>위치는 버튼을 누를 때 <b>한 번만</b> 받습니다. 움직여도 자동으로 다시 받지 않으며, 위치를 새로 쓰려면 "📍 내 위치 다시 찾기"를 누릅니다. 화면이 열려 있거나 앱을 쓰는 동안에도 위치를 계속 추적하지 않습니다.</li>
           <li><b>이용자가 고른 장소</b>: 입력한 주소, 지도에서 누른 지점, 고른 정류장.</li>
         </ul>
 
@@ -69,6 +70,10 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
 
         <h2>7. 방침의 변경</h2>
         <p>내용이 바뀌면 이 화면에서 시행일과 함께 알립니다.</p>
+        <ul className="small muted">
+          <li>2026년 11월 25일: 내 위치를 버튼을 누를 때 한 번만 받도록 바뀐 내용 반영(이전: 검색 화면이 열려 있는 동안 계속 받음), 지도·주소 검색 제공자를 네이버에서 카카오로 변경</li>
+          <li>2026년 11월 20일: 처음 시행</li>
+        </ul>
       </article>
     </main>
   );
