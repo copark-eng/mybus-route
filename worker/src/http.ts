@@ -79,6 +79,9 @@ export async function cacheGet(key: string): Promise<Response | null> {
 function markHit(res: Response, kind: string): Response {
   const out = new Response(res.body, res);
   out.headers.set("X-Cache", kind);
+  // 상위 API 에서 받은 지 몇 초 됐는지 (ADR-040). 화면은 이만큼 빼서 남은 시간을 계산한다
+  const at = Number(res.headers.get("X-Fetched-At"));
+  if (at > 0) out.headers.set("X-Data-Age", String(Math.max(0, Math.round((Date.now() - at) / 1000))));
   return out;
 }
 

@@ -7,7 +7,14 @@
 import { cacheGet, cachePut, json } from "./http";
 
 const BASE = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0";
-const TTL_SEC = 600;
+/** 브라우저 캐시 (요약은 요청 때마다 지금 시각으로 다시 계산한다) */
+const TTL_SEC = 300;
+/**
+ * 기상청 원자료는 발표 단위로 캐시한다 (ADR-040). 키에 발표 시각이 들어가므로 새 발표가 나오면 자연히 새로 받는다.
+ * 초단기실황은 1시간, 단기예보는 3시간마다 → 격자당 시간당 약 1.3회 (이전: 10분마다 2회 = 12회)
+ */
+const NCST_TTL_SEC = 3600 + 600;
+const FCST_TTL_SEC = 3 * 3600 + 600;
 const ERR_TTL_SEC = 60;
 const DEFAULT_LAT = 37.4200; // 성남시청 (ADR-026)
 const DEFAULT_LNG = 127.1267;
@@ -49,21 +56,19 @@ export async function weather(url: URL, serviceKey: string, ctx: ExecutionContex
     ({ nx, ny } = toGrid(lat, lng));
   }
 
-  const okKey = `weather/${nx}-${ny}`;
   const errKey = `weather-err/${nx}-${ny}`;
-  const hit = (await cacheGet(okKey)) ?? (await cacheGet(errKey));
-  if (hit) return hit;
+  const failed = await cacheGet(errKey);
+  if (failed) return failed;
 
   try {
     const key = decodeURIComponent((serviceKey ?? "").trim());
     const now = kstNow();
     const [ncst, fcst] = await Promise.all([
-      call(key, "getUltraSrtNcst", ultraBase(now), nx, ny, 10),
-      call(key, "getVilageFcst", vilageBase(now), nx, ny, 400),
+      cachedCall(key, "getUltraSrtNcst", ultraBase(now), nx, ny, 10, NCST_TTL_SEC, ctx),
+      cachedCall(key, "getVilageFcst", vilageBase(now), nx, ny, 400, FCST_TTL_SEC, ctx),
     ]);
     const body = summarize(ncst.items, fcst.items, now, nx, ny, ncst.baseTime);
-    const out = json(body, 200, { "Cache-Control": `public, max-age=${TTL_SEC}` });
-    await cachePut(okKey, out, TTL_SEC, ctx);
+    const out = json(body, 200, { "Cache-Control": `public, max-age=${TTL_SEC}`, "X-Cache": ncst.hit && fcst.hit ? "HIT-KMA" : ncst.hit || fcst.hit ? "PARTIAL" : "MISS" });
     return out;
   } catch (e) {
     // 미신청·장애 시 요청마다 기상청을 2번씩 부르지 않도록 실패도 짧게 캐시한다.
@@ -135,6 +140,18 @@ const SKY: Record<string, WeatherSummary["sky"]> = { "1": "맑음", "3": "구름
 const PTY: Record<string, WeatherSummary["precip"]> = {
   "0": "없음", "1": "비", "2": "비/눈", "3": "눈", "4": "비", "5": "빗방울", "6": "빗방울눈날림", "7": "눈날림",
 };
+
+/** 발표 단위 캐시를 거쳐 기상청을 부른다. hit 이면 이번 요청에서 기상청을 부르지 않았다 */
+async function cachedCall(
+  key: string, op: string, base: { date: string; time: string }, nx: number, ny: number, rows: number, ttlSec: number, ctx: ExecutionContext,
+): Promise<{ items: any[]; baseTime: string; hit: boolean }> {
+  const cacheKey = `kma/${op}/${nx}-${ny}/${base.date}${base.time}`;
+  const hit = await cacheGet(cacheKey);
+  if (hit) return { ...((await hit.json()) as { items: any[]; baseTime: string }), hit: true };
+  const got = await call(key, op, base, nx, ny, rows);
+  await cachePut(cacheKey, json(got), ttlSec, ctx);
+  return { ...got, hit: false };
+}
 
 async function call(key: string, op: string, base: { date: string; time: string }, nx: number, ny: number, rows: number) {
   const u = new URL(`${BASE}/${op}`);

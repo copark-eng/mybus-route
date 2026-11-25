@@ -24,6 +24,8 @@ import {
 
 /** 이보다 빨리 거절되면 허용 팝업이 뜨지 않은 것으로 본다 */
 const INSTANT_DENY_MS = 700;
+/** 경로 검색 결과 자동 갱신 주기 (ADR-040). 남은 시간은 화면에서 1초마다 줄어드니 60초로도 충분하다 */
+const SEARCH_REFRESH_MS = 60_000;
 
 /** 검색 화면: 입력 + 지도 + 결과 카드 + 출발 정류장 도착판. 상세로 갈 때는 숨겨서 상태를 유지한다 */
 export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav; active: boolean }) {
@@ -58,7 +60,7 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
-  const opts = useLiveOptions(plans, live);
+  const opts = useLiveOptions(plans, live, 8, SEARCH_REFRESH_MS);
   useEffect(() => setHover(null), [plans]);
 
   // ---- 출발 정류장 도착판 (FR-4.5) ----
@@ -77,7 +79,8 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
     }
   }, [boardStation]);
   useEffect(() => { if (!boardStation) setBoard(null); }, [boardStation]);
-  const boardRefresh = useArrivalsRefresh(boardTask, live && !!boardStation);
+  // 경로 결과와 같은 주기로 (ADR-040). 같은 정류장이면 메모리 캐시로 한 번만 부른다
+  const boardRefresh = useArrivalsRefresh(boardTask, live && !!boardStation, SEARCH_REFRESH_MS);
 
   const refreshAll = () => { opts.refresh(); void boardRefresh.runNow(); };
 
@@ -192,7 +195,7 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
 
       <div className="split-body sheet">
         {plans.length > 0 && (
-          <RefreshStatus lastUpdated={opts.lastUpdated} loading={opts.loading} now={now} error={opts.error} onRefresh={refreshAll} paused={opts.paused} />
+          <RefreshStatus lastUpdated={opts.lastUpdated} loading={opts.loading} now={now} error={opts.error} onRefresh={refreshAll} paused={opts.paused} intervalMs={SEARCH_REFRESH_MS} />
         )}
         {message && (
           <div className="msg" data-testid="search-message">

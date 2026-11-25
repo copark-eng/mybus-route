@@ -27,6 +27,11 @@ function screenHeader(): Record<string, string> {
 }
 
 async function getJson<T>(path: string, params: Record<string, string>): Promise<T> {
+  return (await getJsonWithAge<T>(path, params)).data;
+}
+
+/** 응답과 함께 Worker 캐시 나이(초, X-Data-Age)를 돌려준다 (ADR-040) */
+async function getJsonWithAge<T>(path: string, params: Record<string, string>): Promise<{ data: T; ageSec: number }> {
   const query = new URLSearchParams(params).toString();
   const res = await fetch(`${config.apiBase}${path}?${query}`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), headers: screenHeader() });
   if (!res.ok) {
@@ -35,7 +40,8 @@ async function getJson<T>(path: string, params: Record<string, string>): Promise
     try { body = JSON.parse(text); } catch { /* JSON 아님 */ }
     throw new ApiError(body?.error ?? `API ${res.status}: ${text.slice(0, 120)}`, res.status, body?.code);
   }
-  return res.json() as Promise<T>;
+  const age = Number(res.headers.get("X-Data-Age"));
+  return { data: (await res.json()) as T, ageSec: Number.isFinite(age) ? Math.min(Math.max(age, 0), 60) : 0 };
 }
 
 /** Worker 오류. code 가 DAILY_LIMIT 이면 data.go.kr 일일 한도 초과 */
@@ -56,6 +62,13 @@ export interface StationArrivals {
 
 /** 정류장의 실시간 도착 정보 (Worker 경유, ADR-004). 같은 검색 안에서는 메모리에 잠깐 보관한다. */
 const memo = new Map<string, Promise<StationArrivals>>();
+/** 받아 둔 마지막 값 (부르지 않고 꺼내 보기용, ADR-040) */
+const settled = new Map<string, StationArrivals>();
+/** 이미 받은 도착정보를 호출 없이 꺼낸다. maxAgeMs 보다 오래됐거나 없으면 null */
+export function peekArrivals(stationId: string, maxAgeMs: number): StationArrivals | null {
+  const v = settled.get(stationId);
+  return v && Date.now() - v.fetchedAt < maxAgeMs ? v : null;
+}
 export function fetchArrivals(stationId: string, maxAgeMs = 15_000): Promise<StationArrivals> {
   const hit = memo.get(stationId);
   if (hit) {
@@ -64,13 +77,14 @@ export function fetchArrivals(stationId: string, maxAgeMs = 15_000): Promise<Sta
   return refetch();
 
   function refetch() {
-    const p = getJson<RouteArrival[]>("/arrivals", { stationId }).then((routes) => ({
+    // 남은 시간의 기준 시각 = 받은 시각 - Worker 캐시 나이 (공유 캐시 30초, ADR-040)
+    const p = getJsonWithAge<RouteArrival[]>("/arrivals", { stationId }).then(({ data, ageSec }) => ({
       stationId,
-      fetchedAt: Date.now(),
-      routes,
+      fetchedAt: Date.now() - ageSec * 1000,
+      routes: data,
     }));
     memo.set(stationId, p);
-    p.catch(() => memo.delete(stationId));
+    p.then((v) => settled.set(stationId, v), () => memo.delete(stationId));
     return p;
   }
 }

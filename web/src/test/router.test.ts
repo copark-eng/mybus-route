@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../lib/api", () => ({ fetchArrivals: vi.fn() }));
+vi.mock("../lib/api", () => ({ fetchArrivals: vi.fn(), peekArrivals: vi.fn(() => null) }));
 
-import { fetchArrivals, type RouteArrival } from "../lib/api";
+import { fetchArrivals, peekArrivals, type RouteArrival } from "../lib/api";
 import { compareOptions, estimateRide, evaluate, findPlans, headwayMin, isRunning, type RoutePlan } from "../lib/router";
 import type { Place } from "../lib/places";
 import { ST, makeDb, makeResult, route, standardDb, stationPlaceOf } from "./fixtures";
 
 const mockedFetch = vi.mocked(fetchArrivals);
+const mockedPeek = vi.mocked(peekArrivals);
 
 /** 정류장 id → 도착정보. fetchedAgoMs 만큼 이전에 받은 것으로 둔다 */
 function serve(table: Record<string, RouteArrival[]>, fetchedAgoMs = 0) {
@@ -290,6 +291,28 @@ describe("evaluate (fetchArrivals mock)", () => {
     await evaluate(db, plans);
     const ids = mockedFetch.mock.calls.map((c) => c[0]).sort();
     expect(ids).toEqual([ST.A.id, ST.C.id, ST.T1.id].sort());
+  });
+
+  it("자동 갱신(reuseAlightMs): 최근에 받은 하차 정류장은 다시 부르지 않고 그 값으로 차량을 추적한다 (ADR-040)", async () => {
+    const { db, R1 } = standardDb();
+    serve({ [ST.A.id]: [arr(R1.id, 1, [[60, "P1"]])] });
+    // 하차 정류장 C 는 40초 전에 받아 둔 값: 그때 P1 이 1140초 뒤 도착 → 지금은 1100초
+    mockedPeek.mockImplementation((id: string) =>
+      id === ST.C.id ? { stationId: id, fetchedAt: Date.now() - 40_000, routes: [arr(R1.id, 3, [[1140, "P1"]])] } : null,
+    );
+    const [r] = await evaluate(db, [direct(R1)], { reuseAlightMs: 180_000 });
+    expect(mockedFetch.mock.calls.map((c) => c[0])).toEqual([ST.A.id]);
+    expect(mockedPeek).toHaveBeenCalledWith(ST.C.id, 180_000);
+    expect(r.legs[0]).toMatchObject({ boardSec: 60, alightSec: 1100, rideEstimated: false });
+    mockedPeek.mockReset();
+    mockedPeek.mockReturnValue(null);
+  });
+
+  it("자동 갱신이라도 받아 둔 하차 정류장 값이 없으면(또는 오래됐으면) 새로 부른다", async () => {
+    const { db, R1 } = standardDb();
+    serve({});
+    await evaluate(db, [direct(R1)], { reuseAlightMs: 180_000 });
+    expect(mockedFetch.mock.calls.map((c) => c[0]).sort()).toEqual([ST.A.id, ST.C.id].sort());
   });
 
   it("환승: 환승 도보 후 탈 수 있는 첫 버스, 대기 시간 계산", async () => {

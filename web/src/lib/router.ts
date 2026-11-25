@@ -4,7 +4,7 @@
  *  2. 실시간 평가: 승차·환승·하차 정류장의 도착정보로 실제 도착 시각을 계산한다 (ADR-008)
  *  3. 최종 도착 시각 → 환승 횟수 → 도보 시간 순으로 정렬한다 (ADR-009)
  */
-import { fetchArrivals, type RouteArrival, type StationArrivals } from "./api";
+import { fetchArrivals, peekArrivals, type RouteArrival, type StationArrivals } from "./api";
 import { type BusDb, type Route, type Station, stationDistance, walkSeconds } from "./data";
 import type { Place } from "./places";
 
@@ -227,17 +227,30 @@ function routePredictions(arr: StationArrivals | undefined, route: Route, index:
   return match.arrivals.map((a) => ({ sec: Math.max(0, a.seconds - elapsed), plate: a.plateNo }));
 }
 
-export async function evaluate(db: BusDb, plans: RoutePlan[]): Promise<OptionResult[]> {
+/** 자동 갱신 때 하차 정류장 도착정보를 다시 쓰는 최대 나이 (ADR-040) */
+export const ALIGHT_REUSE_MS = 180_000;
+
+export async function evaluate(db: BusDb, plans: RoutePlan[], opts: { reuseAlightMs?: number } = {}): Promise<OptionResult[]> {
   // 승차·환승 정류장 + (차량 추적용) 하차 정류장의 도착정보를 한 번씩만 조회한다
-  const need = new Set<string>();
+  const board = new Set<string>();
+  const alight = new Set<string>();
   for (const p of plans) {
     for (const leg of p.legs) {
-      need.add(leg.route.stops[leg.fromIndex]);
-      need.add(leg.route.stops[leg.toIndex]);
+      board.add(leg.route.stops[leg.fromIndex]);
+      alight.add(leg.route.stops[leg.toIndex]);
     }
   }
-  // data.go.kr 초당 호출 제한을 고려해 동시에 4개씩만 부른다
   const fetched = new Map<string, StationArrivals>();
+  const need = new Set(board);
+  // 자동 갱신(ADR-040): 하차 정류장은 차량 번호로 탑승 시간을 맞추는 데만 쓰므로, 최근에 받은 값이 있으면 다시 부르지 않는다.
+  // (남은 시간은 받은 시각 기준으로 빼서 계산하므로 조금 지난 값도 쓸 수 있다)
+  for (const id of alight) {
+    if (board.has(id)) continue;
+    const old = opts.reuseAlightMs ? peekArrivals(id, opts.reuseAlightMs) : null;
+    if (old) fetched.set(id, old);
+    else need.add(id);
+  }
+  // data.go.kr 초당 호출 제한을 고려해 동시에 4개씩만 부른다
   const queue = [...need];
   let lastError: unknown = null;
   await Promise.all(

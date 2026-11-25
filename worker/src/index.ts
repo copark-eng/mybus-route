@@ -2,7 +2,7 @@
  * mybus-route Worker (ADR-004, ADR-020)
  * 정적 파일(web/dist)은 Workers Static Assets 가 응답하고, /api/* 만 이 코드가 처리한다.
  *
- *   GET /api/arrivals?stationId=206000004      경기도 버스도착정보 (20초 캐시, ADR-015)
+ *   GET /api/arrivals?stationId=206000004      경기도 버스도착정보 (30초 캐시, ADR-015·040)
  *   GET /api/geocode?query=성남시 분당구 ...      NCP Geocoding (ADR-013, ADR-019)
  *   GET /api/reverse-geocode?lng=127.1&lat=37.3  NCP Reverse Geocoding
  *   GET /api/weather?lat=37.38&lng=127.12        기상청 단기예보 요약 (10분 캐시, 실패 60초, ADR-024)
@@ -37,7 +37,8 @@ const dailyLimitResponse = () =>
 const ARRIVAL_URL ="https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArrivalListv2";
 const GEOCODE_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
 const REVERSE_GEOCODE_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
-const ARRIVAL_TTL_SEC = 20;
+/** 도착정보 공유 캐시 (ADR-040: 20 → 30초). 캐시 나이는 X-Data-Age 로 알려 화면이 남은 시간을 맞춘다 */
+const ARRIVAL_TTL_SEC = 30;
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -106,7 +107,7 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
   const limited = await cacheGet(DAILY_LIMIT_KEY);
   if (limited) return limited;
 
-  // 공유 캐시: 같은 정류장은 20초 동안 data.go.kr 을 다시 부르지 않는다 (메모리 → caches.default).
+  // 공유 캐시: 같은 정류장은 30초 동안 data.go.kr 을 다시 부르지 않는다 (메모리 → caches.default).
   const cacheKey = `arrivals/${stationId}`;
   const hit = await cacheGet(cacheKey);
   if (hit) return hit;
@@ -159,7 +160,7 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
     }),
   }));
 
-  const out = json(data, 200, { "Cache-Control": `public, max-age=${ARRIVAL_TTL_SEC}` });
+  const out = json(data, 200, { "Cache-Control": `public, max-age=${ARRIVAL_TTL_SEC}`, "X-Fetched-At": String(Date.now()) });
   await cachePut(cacheKey, out, ARRIVAL_TTL_SEC, ctx);
   return out;
 }

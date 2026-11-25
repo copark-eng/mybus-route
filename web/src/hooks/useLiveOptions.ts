@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { compareOptions, evaluate, type OptionResult, type RoutePlan } from "../lib/router";
+import { ALIGHT_REUSE_MS, compareOptions, evaluate, type OptionResult, type RoutePlan } from "../lib/router";
 import { useDb } from "../context";
 import { isDailyLimitError } from "../lib/api";
 import { useArrivalsRefresh } from "./useArrivalsRefresh";
@@ -20,12 +20,12 @@ export interface LiveOptions {
 }
 
 /**
- * 경로 후보를 실시간으로 평가하고 30초마다 다시 평가한다. plans 가 바뀌면 이전 응답은 버린다.
+ * 경로 후보를 실시간으로 평가하고 intervalMs(기본 30초, 검색 결과는 60초 — ADR-040)마다 다시 평가한다. plans 가 바뀌면 이전 응답은 버린다.
  * data.go.kr 일일 호출 한도를 아끼려고(ADR-032), 첫 평가만 후보 전체를 보고
  * 자동 갱신은 위쪽 결과 REFRESH_TOP 개만 다시 평가한다. 나머지는 앞서 받은 값으로 카운트다운한다.
  * 수동 새로고침(↻)은 다시 전체를 본다.
  */
-export function useLiveOptions(plans: RoutePlan[], enabled: boolean, limit = 8): LiveOptions {
+export function useLiveOptions(plans: RoutePlan[], enabled: boolean, limit = 8, intervalMs?: number): LiveOptions {
   const db = useDb();
   const [state, setState] = useState<{ plans: RoutePlan[]; results: OptionResult[]; done: boolean; error: string | null; at: number }>(
     { plans, results: [], done: false, error: null, at: 0 },
@@ -49,7 +49,8 @@ export function useLiveOptions(plans: RoutePlan[], enabled: boolean, limit = 8):
     const doFull = full.current || !prev;
     const target = doFull ? plans : prev.slice(0, REFRESH_TOP).map((r) => r.plan);
     try {
-      const fresh = await evaluate(db, target);
+      // 자동 갱신은 하차 정류장을 최근 값으로 (ADR-040). 첫 평가·수동 새로고침은 전부 새로 받는다
+      const fresh = await evaluate(db, target, { reuseAlightMs: doFull ? 0 : ALIGHT_REUSE_MS });
       if (id !== reqId.current) return;
       let results: OptionResult[];
       if (doFull) {
@@ -71,7 +72,7 @@ export function useLiveOptions(plans: RoutePlan[], enabled: boolean, limit = 8):
     }
   }, [db, plans, limit]);
 
-  const { running, paused, runNow } = useArrivalsRefresh(task, enabled && plans.length > 0);
+  const { running, paused, runNow } = useArrivalsRefresh(task, enabled && plans.length > 0, intervalMs);
   const refresh = useCallback(() => { full.current = true; void runNow(); }, [runNow]);
   const cur = state.plans === plans ? state : { results: [], done: false, error: null, at: 0 };
   return { results: cur.results, done: cur.done, loading: running, paused, error: cur.error, lastUpdated: cur.at, refresh };

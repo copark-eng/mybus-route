@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { evaluate, type OptionResult, type RoutePlan } from "../lib/router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ALIGHT_REUSE_MS, evaluate, type OptionResult, type RoutePlan } from "../lib/router";
 import { type Favorite, favoriteToPlan } from "../lib/storage";
 import { useDb } from "../context";
 import { useArrivalsRefresh } from "./useArrivalsRefresh";
@@ -33,6 +33,8 @@ export function useFavoriteBoard(favorites: Favorite[], enabled: boolean) {
     return m;
   }, [db, key]);
 
+  const full = useRef(true);
+  useEffect(() => { full.current = true; }, [plans]);
   const prev = useRef(states);
   prev.current = states;
 
@@ -45,7 +47,10 @@ export function useFavoriteBoard(favorites: Favorite[], enabled: boolean) {
       else next.set(id, { kind: "changed" });
     }
     try {
-      const results = byPlan.size ? await evaluate(db, [...byPlan.keys()]) : [];
+      // 첫 조회·수동 새로고침 뒤의 자동 갱신은 하차 정류장을 최근 값으로 (ADR-040)
+      const reuse = full.current ? 0 : ALIGHT_REUSE_MS;
+      const results = byPlan.size ? await evaluate(db, [...byPlan.keys()], { reuseAlightMs: reuse }) : [];
+      full.current = false;
       const seen = new Set<string>();
       for (const r of results) {
         const id = byPlan.get(r.plan);
@@ -70,6 +75,6 @@ export function useFavoriteBoard(favorites: Favorite[], enabled: boolean) {
 
   const { running, paused, runNow } = useArrivalsRefresh(task, enabled && favorites.length > 0);
   const get = useCallback((id: string): FavCardState => states.get(id) ?? LOADING, [states]);
-  const refresh = useCallback(() => void runNow(), [runNow]);
+  const refresh = useCallback(() => { full.current = true; void runNow(); }, [runNow]);
   return { get, loading: running, paused, error, lastUpdated, refresh };
 }

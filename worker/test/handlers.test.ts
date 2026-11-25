@@ -63,7 +63,7 @@ describe("/api/arrivals", () => {
     );
     const r = await call("/api/arrivals?stationId=206000004");
     expect(r.status).toBe(200);
-    expect(r.headers.get("Cache-Control")).toBe("public, max-age=20");
+    expect(r.headers.get("Cache-Control")).toBe("public, max-age=30");
     expect(await r.json()).toEqual([
       {
         routeId: "241224001",
@@ -80,10 +80,20 @@ describe("/api/arrivals", () => {
     expect(u.searchParams.get("stationId")).toBe("206000004");
   });
 
-  it("20초 캐시: 같은 정류장 두 번째 요청은 상위 호출 없음", async () => {
+  it("30초 캐시: 같은 정류장 두 번째 요청은 상위 호출 없음, 캐시 나이를 X-Data-Age 로 (ADR-040)", async () => {
     upstream.mockImplementation(async () => ok({ response: { msgHeader: { resultCode: 4 } } }));
-    expect(await (await call("/api/arrivals?stationId=206000004")).json()).toEqual([]);
-    expect(await (await call("/api/arrivals?stationId=206000004")).json()).toEqual([]);
+    const first = await call("/api/arrivals?stationId=206000004");
+    expect(await first.json()).toEqual([]);
+    expect(first.headers.get("X-Data-Age")).toBeNull(); // 방금 받은 값
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 25_000);
+    try {
+      const second = await call("/api/arrivals?stationId=206000004");
+      expect(await second.json()).toEqual([]);
+      expect(Number(second.headers.get("X-Data-Age"))).toBeGreaterThanOrEqual(24);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(upstream).toHaveBeenCalledTimes(1);
   });
 
@@ -193,7 +203,7 @@ describe("/api/weather", () => {
     expect(upstream.mock.calls.length).toBe(calls); // 캐시 적중
   });
 
-  it("정상: 요약 200 + 10분 캐시, 같은 격자 재요청은 상위 호출 없음", async () => {
+  it("정상: 요약 200, 같은 격자 재요청은 상위 호출 없음 (발표 단위 캐시, ADR-040)", async () => {
     const header = { resultCode: "00", resultMsg: "NORMAL_SERVICE" };
     upstream.mockImplementation(async (u: URL) => {
       const op = String(u).includes("getUltraSrtNcst") ? "ncst" : "fcst";
@@ -204,12 +214,38 @@ describe("/api/weather", () => {
     });
     const r = await call("/api/weather?lat=37.3826&lng=127.1189");
     expect(r.status).toBe(200);
-    expect(r.headers.get("Cache-Control")).toBe("public, max-age=600");
+    expect(r.headers.get("Cache-Control")).toBe("public, max-age=300");
+    expect(r.headers.get("X-Cache")).toBe("MISS");
     const body = await r.json();
     expect(body).toMatchObject({ temp: 6.2, feels: 6.2, sky: "맑음", precip: "없음", rainFrom: null, maxPop: 0, nx: 62, ny: 123 });
     expect(upstream).toHaveBeenCalledTimes(2);
-    await call("/api/weather?lat=37.383&lng=127.119"); // 같은 격자
+    const again = await call("/api/weather?lat=37.383&lng=127.119"); // 같은 격자
+    expect(again.headers.get("X-Cache")).toBe("HIT-KMA");
     expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it("같은 발표 안에서는 30분 뒤에도 다시 받지 않고, 새 발표가 나오면 그것만 받는다 (ADR-040)", async () => {
+    const header = { resultCode: "00", resultMsg: "NORMAL_SERVICE" };
+    const bases: string[] = [];
+    upstream.mockImplementation(async (u: URL) => {
+      const url = new URL(String(u));
+      bases.push(`${url.pathname.split("/").pop()} ${url.searchParams.get("base_time")}`);
+      return ok({ response: { header, body: { items: { item: [] } } } });
+    });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // KST 14:45 → 실황 14시, 예보 14시 발표
+      vi.setSystemTime(new Date("2026-11-25T05:45:00Z"));
+      await call("/api/weather?nx=62&ny=123");
+      vi.setSystemTime(new Date("2026-11-25T06:15:00Z")); // KST 15:15: 실황은 아직 14시(40분 뒤 공개)
+      await call("/api/weather?nx=62&ny=123");
+      expect(bases).toEqual(["getUltraSrtNcst 1400", "getVilageFcst 1400"]);
+      vi.setSystemTime(new Date("2026-11-25T06:45:00Z")); // KST 15:45: 실황 15시 발표만 새로
+      await call("/api/weather?nx=62&ny=123");
+      expect(bases).toEqual(["getUltraSrtNcst 1400", "getVilageFcst 1400", "getUltraSrtNcst 1500"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("resultCode ≠ 00 → 502", async () => {
