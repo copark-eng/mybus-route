@@ -110,6 +110,35 @@ export function isRunning(route: Route, at: Date): boolean {
   return now >= first - 10 && now <= last + 90;
 }
 
+const hhmm = (v: string | undefined) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v ?? "");
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/**
+ * 이 정류장을 첫차·막차가 지나는 시각(자정부터 분, 막차는 자정을 넘으면 1440 이상) (ADR-045).
+ * 회차 전(상행)은 기점 첫차·막차, 회차 뒤(하행)는 종점 첫차·막차에, 출발 지점에서 이 정류장까지 걸리는 시간을 더한다.
+ * 시간 정보가 없으면 null (판단하지 않음).
+ */
+export function serviceWindow(db: BusDb, route: Route, index: number): { first: number; last: number } | null {
+  const down = route.turn > 0 && route.turn < route.stops.length - 1 && index > route.turn;
+  const first = hhmm(down ? route.downFirst || route.first : route.first);
+  let last = hhmm(down ? route.downLast || route.last : route.last);
+  if (first === null || last === null) return null;
+  if (last < first) last += 24 * 60; // 막차가 자정을 넘는 노선
+  const ride = estimateRide(db, route, down ? route.turn : 0, index) / 60;
+  return { first: first + ride, last: last + ride };
+}
+
+/** 시각 → 운행 시간창 기준의 분. 첫차보다 1시간 넘게 이르면 전날 밤(자정 넘음)으로 본다 */
+export function minuteIn(win: { first: number }, at: Date): number {
+  const m = at.getHours() * 60 + at.getMinutes() + at.getSeconds() / 60;
+  return m < win.first - 60 ? m + 24 * 60 : m;
+}
+
+/** 막차가 지난 뒤 이만큼(분)은 실시간이 비어도 아직 올 수 있다고 본다 (도착정보 지연·추정 오차) */
+const LAST_GRACE_MIN = 10;
+
 /** 지금 시각의 배차 간격 (분) */
 export function headwayMin(route: Route, now = new Date()): number {
   const h = now.getHours();
@@ -315,7 +344,25 @@ function evaluatePlan(db: BusDb, plan: RoutePlan, arrivals: Map<string, StationA
       const last = preds.at(-1)?.sec;
       // 예측된 마지막 버스 이후는 배차 간격마다 온다고 보고, 예측이 없으면 평균 대기(배차의 절반)로 본다.
       boardSec = last !== undefined ? last + hw * Math.max(1, Math.ceil((t - last) / hw)) : t + hw / 2;
-      if (preds.length === 0 && !isRunning(route, new Date(now + boardSec * 1000))) notRunning = true;
+      // 운행 시간창으로 고친다 (ADR-045)
+      const win = serviceWindow(db, route, fromIndex);
+      if (win) {
+        const nowMin = minuteIn(win, new Date(now));
+        if (preds.length === 0 && nowMin > win.last + LAST_GRACE_MIN) {
+          // 막차가 이 정류장을 이미 지났고, 다가오는 버스도 없다 → 운행 종료
+          notRunning = true;
+        } else if (preds.length === 0 && nowMin + t / 60 < win.first) {
+          // 첫차 전: 배차 절반이 아니라 첫차가 이 정류장에 오는 시각
+          boardSec = Math.round((win.first - nowMin) * 60);
+        } else if (preds.length === 0) {
+          // 막차 무렵: 추정이 막차 통과 시각(+여유)을 넘지 않게 한다
+          boardSec = Math.min(boardSec, Math.max(t, Math.round((win.last + LAST_GRACE_MIN - nowMin) * 60)));
+        }
+        // 이 시각에 탈 버스가 막차 뒤라면 탈 수 없다
+        if (nowMin + boardSec / 60 > win.last + LAST_GRACE_MIN) notRunning = true;
+      } else if (preds.length === 0 && !isRunning(route, new Date(now + boardSec * 1000))) {
+        notRunning = true;
+      }
     }
 
     // 탑승 시간: 같은 차량이 하차 정류장 예측에 있으면 그 값을 쓴다
