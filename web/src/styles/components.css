@@ -355,7 +355,10 @@ button.card:hover { background: var(--surface-2); }
 .app-menu-list button:hover, .app-menu-list button:focus-visible { background: var(--surface); outline: none; }
 /* 오른쪽 위 ☰ 와 겹치지 않게 상단 바 오른쪽을 비운다 */
 .topbar { padding-right: 104px; } /* 🚌 + ☰ (ADR-039) */
-.screen.home { padding-top: 52px; }
+/* 홈: 제목을 🚌·☰ 버튼과 같은 줄에 (버튼 자리만큼 오른쪽을 비운다) */
+.screen.home { padding-top: max(8px, env(safe-area-inset-top)); }
+.home-title { display: flex; align-items: center; min-height: 44px; padding-right: 104px; margin: 0 0 var(--sp-2); font: var(--fs-title); color: var(--text-1); }
+.home-title:focus { outline: none; }
 .doc { display: grid; gap: 10px; font: var(--fs-body); padding-bottom: 32px; }
 .doc h2 { font: var(--fs-heading); margin: 14px 0 0; }
 .doc ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }

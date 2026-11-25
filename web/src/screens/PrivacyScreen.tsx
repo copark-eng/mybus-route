@@ -20,7 +20,7 @@ export function PrivacyScreen({ nav }: { nav: Nav }) {
       <article className="doc">
         <p className="muted small">시행일: {PRIVACY_EFFECTIVE_DATE}</p>
         <p>
-          mybus-route(이하 "서비스")는 이용자의 위치정보를 소중히 다루며, 「위치정보의 보호 및 이용 등에 관한 법률」 등
+          경기 버스 길찾기(mybus-route, 이하 "서비스")는 이용자의 위치정보를 소중히 다루며, 「위치정보의 보호 및 이용 등에 관한 법률」 등
           관련 법령을 지킵니다. 이 방침은 서비스가 어떤 위치정보를, 왜, 어떻게 쓰고 지키는지 설명합니다.
         </p>
 

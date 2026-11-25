@@ -29,7 +29,8 @@ export function HomeScreen({ nav }: { nav: Nav }) {
 
   return (
     <main className="screen home" data-testid="screen-home">
-      <h1 ref={title} tabIndex={-1} className="sr-only">mybus-route 홈</h1>
+      {/* 사이트 제목 (공공데이터 활용 서비스명과 같게) */}
+      <h1 ref={title} tabIndex={-1} className="home-title" data-testid="site-title">경기 버스 길찾기</h1>
       {/* 홈은 기본 위치(성남시청) 날씨 (ADR-026) */}
       <WeatherLine label="성남시청" />
 
