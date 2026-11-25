@@ -12,6 +12,7 @@ import { HomeScreen } from "./screens/HomeScreen";
 import { RouteScreen } from "./screens/RouteScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { PrivacyScreen } from "./screens/PrivacyScreen";
+import { SourcesScreen } from "./screens/SourcesScreen";
 import { BusSearchScreen } from "./screens/BusSearchScreen";
 import { AppMenu } from "./components/features/AppMenu";
 
@@ -22,7 +23,7 @@ export type DetailView =
 /** 노선 정보 화면 (ADR-028). stationId 는 강조할 정류장 */
 export type RouteView = { name: "route"; routeId: string; stationId?: string };
 /** 메뉴에서 여는 문서 화면 (ADR-033) */
-export type DocView = { name: "privacy" };
+export type DocView = { name: "privacy" } | { name: "sources" };
 /** 버스 번호로 노선 찾기 (ADR-039) */
 export type BusSearchView = { name: "buses" };
 export type View = { name: "home" } | SearchView | DetailView | RouteView | DocView | BusSearchView;
@@ -39,6 +40,7 @@ function hashOf(v: View): string {
   if (v.name === "detail") return v.kind === "favorite" ? `#fav/${encodeURIComponent(v.favoriteId)}` : "#route";
   if (v.name === "route") return `#bus/${v.routeId}${v.stationId ? `/${v.stationId}` : ""}`;
   if (v.name === "privacy") return "#privacy";
+  if (v.name === "sources") return "#sources";
   if (v.name === "buses") return "#buses";
   return location.pathname + location.search;
 }
@@ -50,6 +52,7 @@ function viewFromHash(): View {
   const bus = /^#bus\/(\d+)(?:\/(\d+))?$/.exec(location.hash);
   if (bus) return { name: "route", routeId: bus[1], stationId: bus[2] };
   if (location.hash === "#privacy") return { name: "privacy" };
+  if (location.hash === "#sources") return { name: "sources" };
   if (location.hash === "#buses") return { name: "buses" };
   return HOME;
 }
@@ -152,6 +155,7 @@ export function App() {
           </ErrorBoundary>
         )}
         {v.name === "privacy" && <PrivacyScreen nav={nav} />}
+        {v.name === "sources" && <SourcesScreen nav={nav} />}
         {v.name === "buses" && (
           <ErrorBoundary key={`buses-${cur.idx}`} fallback={<ScreenError onHome={() => navigate(HOME)} />}>
             <BusSearchScreen nav={nav} />

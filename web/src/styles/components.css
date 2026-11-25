@@ -417,3 +417,5 @@ button.card:hover { background: var(--surface-2); }
 .sort-toggle { margin-bottom: var(--sp-2); }
 .sort-toggle button { min-height: 36px; }
 .sort-note { margin: 0 0 var(--sp-2); }
+/* 본문 안 링크처럼 보이는 버튼 (데이터 출처, ADR-043) */
+.text-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }

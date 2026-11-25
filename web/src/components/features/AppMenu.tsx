@@ -14,6 +14,7 @@ function versionLabel(): string {
 /** 메뉴 항목 (ADR-033). 문서가 늘면 여기에 추가한다 */
 const ITEMS: { name: DocView["name"]; label: string }[] = [
   { name: "privacy", label: "개인위치정보 처리방침" },
+  { name: "sources", label: "데이터 출처" },
 ];
 
 /** 모든 화면 오른쪽 위 ☰ 버튼 + 펼침 메뉴. 바깥을 누르거나 Esc 로 닫힌다 */

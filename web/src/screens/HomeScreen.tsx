@@ -89,6 +89,9 @@ export function HomeScreen({ nav }: { nav: Nav }) {
       <footer className="footer" data-testid="footer">
         정류장 정보 기준 {d.getFullYear()}.{d.getMonth() + 1}.{d.getDate()} · 정류장 {db.selectable.length.toLocaleString()}곳 · 노선{" "}
         {db.routes.size.toLocaleString()}개{db.partial ? " · 일부 수집 중" : ""}
+        <br />
+        자료: 경기도 버스정보·기상청 단기예보(공공데이터포털) · 지도: NAVER{" "}
+        <button type="button" className="text-link" onClick={() => nav.navigate({ name: "sources" })} data-testid="footer-sources">출처 자세히</button>
       </footer>
     </main>
   );
