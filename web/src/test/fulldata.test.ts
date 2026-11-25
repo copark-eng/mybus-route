@@ -46,4 +46,16 @@ describe.skipIf(!has)("경기도 전체 데이터", () => {
     console.log(`${_name}: 후보 ${plans.length}개, ${ms.toFixed(0)}ms, 예) ${plans.slice(0, 3).map((p) => p.legs.map((l) => l.route.name).join("→")).join(", ")}`);
     expect(ms).toBeLessThan(500);
   });
+
+  it("서현역 07147 → 판교원마을 07015: 602 타고 백현마을1단지에서 341·103 으로 갈아타는 경로를 후보에 넣는다 (ADR-042)", () => {
+    const plans = findPlans(db, stop("07147"), stop("07015"), true);
+    const names = plans.map((p) => p.legs.map((l) => l.route.name).join(">"));
+    expect(names).toContain("602>341");
+    expect(names).toContain("602>103");
+    const p = plans.find((x) => x.legs.map((l) => l.route.name).join(">") === "602>341")!;
+    expect(db.stations.get(p.legs[0].route.stops[p.legs[0].toIndex])!.name).toBe("백현마을1단지");
+    // 같은 곳에서 같은 두 번째 버스로 갈아타는 후보는 하나만
+    const keys = plans.filter((x) => x.legs.length === 2).map((x) => x.legs[1].route.id + "@" + x.legs[1].route.stops[x.legs[1].fromIndex]);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
 });

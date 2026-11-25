@@ -5,7 +5,7 @@
  *  3. 최종 도착 시각 → 환승 횟수 → 도보 시간 순으로 정렬한다 (ADR-009)
  */
 import { fetchArrivals, peekArrivals, type RouteArrival, type StationArrivals } from "./api";
-import { estimateFare, type Fare } from "./fare";
+import { baseFare, estimateFare, SEC_PER_WON, type Fare } from "./fare";
 import { type BusDb, type Route, type Station, stationDistance, walkSeconds } from "./data";
 import type { Place } from "./places";
 
@@ -117,6 +117,14 @@ export function headwayMin(route: Route, now = new Date()): number {
   return (peak ? route.peek ?? route.npeek : route.npeek ?? route.peek) ?? 15;
 }
 
+/**
+ * 후보를 고를 때 요금도 본다 (ADR-042, 추천 정렬 ADR-041 과 같은 환산: 100원 = 1분).
+ * 일반버스(1,650원)보다 비싼 만큼 시간으로 더한다. 공항·시외처럼 요금을 모르면 비싼 쪽으로 본다.
+ */
+function farePenalty(route: Route): number {
+  return Math.max(0, (baseFare(route)?.won ?? 5000) - 1650) * SEC_PER_WON;
+}
+
 export function findPlans(db: BusDb, from: Place, to: Place, allowTransfer: boolean): RoutePlan[] {
   const origins = endpoints(db, from);
   const dests = endpoints(db, to);
@@ -131,7 +139,7 @@ export function findPlans(db: BusDb, from: Place, to: Place, allowTransfer: bool
       for (let j = i + 1; j <= end; j++) {
         const dw = destWalk.get(route.stops[j]);
         if (dw === undefined) continue;
-        const cost = o.walk + estimateRide(db, route, i, j) + dw + headwayMin(route) * 30;
+        const cost = o.walk + estimateRide(db, route, i, j) + dw + headwayMin(route) * 30 + farePenalty(route);
         const prev = direct.get(route.id);
         if (!prev || cost < prev.cost) {
           direct.set(route.id, {
@@ -155,7 +163,8 @@ export function findPlans(db: BusDb, from: Place, to: Place, allowTransfer: bool
       const end = Math.min(route.stops.length - 1, i + CONFIG.maxRideStops);
       for (let j = i + 1; j <= end; j++) {
         const t1 = route.stops[j];
-        const cost = o.walk + estimateRide(db, route, i, j);
+        // 첫 버스도 평균 대기(배차의 절반)를 넣는다. 빠지면 드물게 오는 버스가 자주 오는 버스와 같은 점수를 받았다 (ADR-042)
+        const cost = o.walk + estimateRide(db, route, i, j) + headwayMin(route) * 30;
         const list = reachA.get(t1) ?? [];
         const same = list.find((r) => r.route.id === route.id);
         if (same) { if (cost < same.cost) Object.assign(same, { i, j, walk: o.walk, cost }); }
@@ -192,7 +201,7 @@ export function findPlans(db: BusDb, from: Place, to: Place, allowTransfer: bool
       for (const a of aList) {
         for (const b of bList) {
           if (a.route.id === b.route.id) continue;
-          const cost = a.cost + walkT + b.cost;
+          const cost = a.cost + walkT + b.cost + Math.max(farePenalty(a.route), farePenalty(b.route));
           const key = `${a.route.id}>${b.route.id}`;
           const prev = transfer.get(key);
           if (!prev || cost < prev.cost) {
@@ -213,7 +222,17 @@ export function findPlans(db: BusDb, from: Place, to: Place, allowTransfer: bool
       }
     }
   }
-  const transferPlans = [...transfer.values()].sort((a, b) => a.cost - b.cost).slice(0, CONFIG.maxTransfer);
+  // 같은 정류장에서 같은 두 번째 버스로 갈아타는 후보는 하나만 (첫 버스만 다른 비슷한 경로가 자리를 다 차지하지 않게, ADR-042)
+  const used = new Set<string>();
+  const transferPlans: { plan: RoutePlan; cost: number }[] = [];
+  for (const t of [...transfer.values()].sort((a, b) => a.cost - b.cost)) {
+    const second = t.plan.legs[1];
+    const key = `${second.route.id}@${second.route.stops[second.fromIndex]}`;
+    if (used.has(key)) continue;
+    used.add(key);
+    transferPlans.push(t);
+    if (transferPlans.length >= CONFIG.maxTransfer) break;
+  }
   return [...directPlans, ...transferPlans].map((x) => x.plan);
 }
 
