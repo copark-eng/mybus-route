@@ -12,16 +12,16 @@ import { routeColor } from "../../lib/routeType";
 
 const placeKey = (p: Place | null) => (p ? `${p.lat.toFixed(6)},${p.lng.toFixed(6)}` : "-");
 
-/** 네이버 지도 (검색·상세·노선 화면). 마운트 시 1회 초기화, 언마운트 시 destroy */
-export function NaverMap(props: ComponentProps<typeof NaverMapInner>) {
+/** 지도 (검색·상세·노선 화면, 카카오맵 ADR-044). 마운트 시 1회 초기화, 언마운트 시 destroy */
+export function BusMap(props: ComponentProps<typeof BusMapInner>) {
   return (
     <ErrorBoundary fallback={<div className={`map map-missing ${props.className ?? ""}`} data-testid="map">지도를 표시하지 못했습니다.</div>}>
-      <NaverMapInner {...props} />
+      <BusMapInner {...props} />
     </ErrorBoundary>
   );
 }
 
-function NaverMapInner({ from, to, path, line, buses, focusStop, onPick, className = "" }: {
+function BusMapInner({ from, to, path, line, buses, focusStop, onPick, className = "" }: {
   from: Place | null;
   to: Place | null;
   path?: OptionResult | null;
@@ -37,13 +37,13 @@ function NaverMapInner({ from, to, path, line, buses, focusStop, onPick, classNa
   const db = useDb();
   const el = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<MapView | null>(null);
-  const [failed, setFailed] = useState<string | null>(config.naverMapClientId ? null : "지도 Client ID 가 설정되지 않아 지도를 표시하지 않습니다.");
+  const [failed, setFailed] = useState<string | null>(config.kakaoMapKey ? null : "지도 키(VITE_KAKAO_MAP_KEY)가 설정되지 않아 지도를 표시하지 않습니다.");
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
   const canPick = !!onPick;
 
   useEffect(() => {
-    if (!config.naverMapClientId || !el.current) return;
+    if (!config.kakaoMapKey || !el.current) return;
     const ctrl = new AbortController();
     let made: MapView | null = null;
     initMap(

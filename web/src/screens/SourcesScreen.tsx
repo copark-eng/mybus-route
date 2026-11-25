@@ -38,7 +38,8 @@ export function SourcesScreen({ nav }: { nav: Nav }) {
 
         <h2>지도</h2>
         <ul>
-          <li>NAVER Maps API (네이버클라우드플랫폼): 지도, 주소 검색</li>
+          <li>카카오맵 API (Kakao Developers): 지도</li>
+          <li>카카오 로컬 API: 주소 검색, 지도에서 누른 곳의 주소 확인</li>
         </ul>
 
         <h2>요금</h2>

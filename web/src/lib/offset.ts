@@ -7,7 +7,7 @@ import type { LatLng } from "./shapes";
 
 const R = 6_378_137; // 지구 반지름(m), 웹 메르카토르
 
-/** 화면 1px 이 몇 m 인지 (256px 타일 기준 줌, 네이버 지도 v3 와 같다) */
+/** 화면 1px 이 몇 m 인지 (256px 타일 기준 줌). 카카오맵 레벨은 map.ts 의 metersPerPixelAtLevel */
 export function metersPerPixel(lat: number, zoom: number): number {
   return (2 * Math.PI * R * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** zoom);
 }

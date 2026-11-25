@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 import { clearMemCache } from "../src/http";
 
-const env: Env = { BUS_API_KEY: "TEST%2BKEY", NCP_KEY_ID: "id", NCP_KEY: "secret" };
+const env: Env = { BUS_API_KEY: "TEST%2BKEY", KAKAO_REST_KEY: "secret" };
 const ctx = () => ({ waitUntil: vi.fn(), passThroughOnException: vi.fn() }) as unknown as ExecutionContext;
 const call = (path: string) => worker.fetch(new Request(`https://x.test${path}`), env, ctx());
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });

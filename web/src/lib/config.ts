@@ -1,5 +1,6 @@
 export const config = {
-  naverMapClientId: import.meta.env.VITE_NAVER_MAP_CLIENT_ID as string | undefined,
+  /** 카카오 JavaScript 키 (도메인으로 제한되므로 공개되어도 됨, ADR-044) */
+  kakaoMapKey: import.meta.env.VITE_KAKAO_MAP_KEY as string | undefined,
   /** API 는 같은 주소의 /api 아래에 있다 (ADR-020). */
   apiBase: "/api",
   /** 실시간 정보 자동 갱신 주기 (ADR-015) */

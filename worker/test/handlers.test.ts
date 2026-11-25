@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 import { clearMemCache } from "../src/http";
 
-const env: Env = { BUS_API_KEY: "TEST%2BKEY", NCP_KEY_ID: "id", NCP_KEY: "secret" };
+const env: Env = { BUS_API_KEY: "TEST%2BKEY", KAKAO_REST_KEY: "secret" };
 const ctx = () => ({ waitUntil: vi.fn(), passThroughOnException: vi.fn() }) as unknown as ExecutionContext;
 const call = (path: string, method = "GET") => worker.fetch(new Request(`https://x.test${path}`, { method }), env, ctx());
 
@@ -132,17 +132,24 @@ describe("/api/geocode, /api/reverse-geocode 입력 검증", () => {
 
   it("query 100자 초과 → 400, 100자는 통과", async () => {
     expect((await call(`/api/geocode?query=${"가".repeat(101)}`)).status).toBe(400);
-    upstream.mockResolvedValue(ok({ addresses: [] }));
+    upstream.mockResolvedValue(ok({ documents: [] }));
     expect((await call(`/api/geocode?query=${"가".repeat(100)}`)).status).toBe(200);
   });
 
-  it("geocode 결과를 계약 형식으로 바꾸고 NCP 키는 헤더로만 보낸다", async () => {
-    upstream.mockResolvedValue(ok({ addresses: [{ roadAddress: "경기도 성남시 분당구 판교역로 166", jibunAddress: "", x: "127.1", y: "37.39" }] }));
+  it("geocode: 카카오 로컬 결과를 계약 형식으로 바꾸고 REST 키는 헤더로만 보낸다 (ADR-044)", async () => {
+    upstream.mockResolvedValue(ok({ documents: [
+      { address_name: "경기 성남시 분당구 백현동 532", x: "127.1", y: "37.39", address: { address_name: "경기 성남시 분당구 백현동 532" }, road_address: { address_name: "경기 성남시 분당구 판교역로 166" } },
+      { address_name: "경기 성남시 분당구 백현동", x: "127.2", y: "37.4", address: null, road_address: null },
+    ] }));
     const r = await call("/api/geocode?query=판교역로 166");
-    expect(await r.json()).toEqual([{ roadAddress: "경기도 성남시 분당구 판교역로 166", jibunAddress: null, lng: 127.1, lat: 37.39 }]);
+    expect(await r.json()).toEqual([
+      { roadAddress: "경기 성남시 분당구 판교역로 166", jibunAddress: "경기 성남시 분당구 백현동 532", lng: 127.1, lat: 37.39 },
+      { roadAddress: null, jibunAddress: "경기 성남시 분당구 백현동", lng: 127.2, lat: 37.4 },
+    ]);
     const [url, init] = upstream.mock.calls[0] as [URL, RequestInit];
+    expect(String(url)).toContain("dapi.kakao.com/v2/local/search/address.json");
     expect(String(url)).not.toContain("secret");
-    expect((init.headers as Record<string, string>)["x-ncp-apigw-api-key"]).toBe("secret");
+    expect((init.headers as Record<string, string>).Authorization).toBe("KakaoAK secret");
   });
 
   it("geocode 상위 오류 → 502 + detail(앞 300자)", async () => {
@@ -160,11 +167,22 @@ describe("/api/geocode, /api/reverse-geocode 입력 검증", () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
-  it("reverse-geocode 정상 → NCP 응답 원본", async () => {
-    upstream.mockResolvedValue(ok({ results: [{ name: "addr" }] }));
+  it("reverse-geocode: 도로명 주소 한 줄 (시·도, 시 빼고 구부터 + 건물명)", async () => {
+    upstream.mockResolvedValue(ok({ documents: [{
+      road_address: { region_2depth_name: "성남시 분당구", road_name: "판교역로", main_building_no: "166", sub_building_no: "", building_name: "카카오판교아지트" },
+      address: { region_2depth_name: "성남시 분당구", region_3depth_name: "백현동", main_address_no: "532", sub_address_no: "" },
+    }] }));
     const r = await call("/api/reverse-geocode?lng=127.1&lat=37.39");
-    expect(await r.json()).toEqual({ results: [{ name: "addr" }] });
-    expect(new URL(String(upstream.mock.calls[0][0])).searchParams.get("coords")).toBe("127.1,37.39");
+    expect(await r.json()).toEqual({ address: "분당구 판교역로 166 (카카오판교아지트)" });
+    const u = new URL(String(upstream.mock.calls[0][0]));
+    expect([u.searchParams.get("x"), u.searchParams.get("y")]).toEqual(["127.1", "37.39"]);
+  });
+
+  it("reverse-geocode: 도로명이 없으면 지번, 구가 없는 시는 시부터, 결과 없으면 null", async () => {
+    upstream.mockResolvedValueOnce(ok({ documents: [{ road_address: null, address: { region_2depth_name: "과천시", region_3depth_name: "중앙동", main_address_no: "1", sub_address_no: "3" } }] }));
+    expect(await (await call("/api/reverse-geocode?lng=127.0&lat=37.43")).json()).toEqual({ address: "과천시 중앙동 1-3" });
+    upstream.mockResolvedValueOnce(ok({ documents: [] }));
+    expect(await (await call("/api/reverse-geocode?lng=127.0&lat=37.44")).json()).toEqual({ address: null });
   });
 });
 

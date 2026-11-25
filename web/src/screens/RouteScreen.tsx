@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Nav, RouteView } from "../App";
-import { NaverMap } from "../components/features/NaverMap";
+import { BusMap } from "../components/features/BusMap";
 import { RefreshStatus } from "../components/features/RefreshStatus";
 import { RouteBadge } from "../components/features/RouteBadge";
 import { EmptyState, IconButton } from "../components/ui";
@@ -114,7 +114,7 @@ export function RouteScreen({ view, nav }: { view: RouteView; nav: Nav }) {
       <RefreshStatus lastUpdated={refresh.lastRun} loading={refresh.running} now={now} error={error} onRefresh={() => void refresh.runNow()} intervalMs={REFRESH_MS} paused={refresh.paused} />
       {error && <p className="msg small" data-testid="route-error">버스 위치를 불러오지 못했습니다: {error}</p>}
       <div ref={mapBox}>
-        <NaverMap from={markPlace} to={null} line={route} buses={busMarkers} focusStop={focusStop} className="map-route" />
+        <BusMap from={markPlace} to={null} line={route} buses={busMarkers} focusStop={focusStop} className="map-route" />
       </div>
       <p className="muted small route-note">
         버스 위치는 30초마다 갱신하고, 정류장 사이에서는 도로 거리와 평균 속도로 대략 어디쯤인지 보여 줍니다.

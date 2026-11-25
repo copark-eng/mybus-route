@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { DetailView, Nav } from "../App";
-import { NaverMap } from "../components/features/NaverMap";
+import { BusMap } from "../components/features/BusMap";
 import { RefreshStatus } from "../components/features/RefreshStatus";
 import { StepList } from "../components/features/StepList";
 import { TimeBar } from "../components/features/TimeBar";
@@ -131,7 +131,7 @@ export function DetailScreen({ view, nav }: { view: DetailView; nav: Nav }) {
         )}
       </div>
       <div className="split-map">
-        <NaverMap from={from} to={to} path={result} className="map-detail" />
+        <BusMap from={from} to={to} path={result} className="map-detail" />
       </div>
       <div className="split-body">
         <RefreshStatus lastUpdated={live.lastUpdated} loading={live.loading} now={now} error={live.error} onRefresh={live.refresh} paused={live.paused} />

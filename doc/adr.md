@@ -947,3 +947,20 @@ data.go.kr 일일 한도(ADR-032) 이후 "버스 조회가 너무 많지 않은�
     - 지도(NAVER Maps)
     - 요금 추정 근거
     - 실시간 정보는 참고용이라는 안내
+
+## ADR-044: 지도를 네이버에서 카카오맵으로
+
+- **배경**:
+  - 네이버 클라우드 Maps는 대표 계정 무료 이용량을 넘으면 기본적으로 과금된다.
+  - 카카오맵은 유료 API를 켜지 않으면 무료 쿼터를 넘어도 과금 없이 429로 멈춘다.
+  - 개인 서비스라 "돈이 나가지 않는 쪽"을 우선한다.
+- **결정**:
+  - **지도**: 카카오맵 JavaScript SDK(`sdk.js?appkey=…&autoload=false` → `kakao.maps.load`)를 쓴다. 키는 `VITE_KAKAO_MAP_KEY`(JavaScript 키, Web 도메인으로 제한).
+  - **마커·팝업**: 정류장 점, 출·도착 핀, 버스, 강조 정류장, 지도에서 고르기 팝업을 모두 `CustomOverlay`(HTML)로 그린다. 기존 CSS를 그대로 쓴다.
+  - **확대**: 네이버 줌 대신 카카오 레벨(1이 가장 가까움)을 쓴다. 정류장 점은 레벨 4 이하에서만 그린다(네이버 줌 16 정도). 정류장 강조는 레벨 3이다. 노선 선의 오른쪽 이동(ADR-037)은 레벨별 m/px(0.25×2^(L-1))로 계산한다.
+  - **주소 검색·좌표→주소**: 카카오 로컬 REST API를 Worker에서 부른다(`KAKAO_REST_KEY`, `Authorization: KakaoAK`).
+    - `/api/geocode` 응답 형식은 그대로 둔다(roadAddress, jibunAddress, lng, lat).
+    - `/api/reverse-geocode`는 `{address}` 한 줄로 바꿨다. 시·도와 시는 빼고 구부터 쓰고, 건물명은 괄호로 붙인다.
+  - 컴포넌트 이름은 `NaverMap`에서 `BusMap`으로 바꿨다.
+  - 개인위치정보 처리방침, 데이터 출처, 홈 하단의 지도 제공자 표기도 카카오로 바꿨다.
+- **할 일(사람)**: 카카오 개발자센터에서 앱을 만들고, 카카오맵 사용 설정을 켜고, Web 도메인(localhost:5173, workers.dev)을 등록한다. 키는 `web/.env`와 `worker/.dev.vars`에 넣는다. 배포 때는 `wrangler secret put KAKAO_REST_KEY`와 빌드 변수 `VITE_KAKAO_MAP_KEY`를 설정한다.

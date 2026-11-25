@@ -93,20 +93,10 @@ export function geocode(query: string): Promise<GeocodeResult[]> {
   return getJson<GeocodeResult[]>("/geocode", { query });
 }
 
-/** 좌표 → 도로명(없으면 지번) 주소 한 줄. */
+/** 좌표 → 도로명(없으면 지번) 주소 한 줄. Worker 가 카카오 로컬 결과를 한 줄로 만들어 준다 (ADR-044) */
 export async function reverseGeocode(lng: number, lat: number): Promise<string | null> {
-  const body = await getJson<any>("/reverse-geocode", { lng: String(lng), lat: String(lat) });
-  const results: any[] = body?.results ?? [];
-  const road = results.find((r) => r.name === "roadaddr");
-  const addr = road ?? results.find((r) => r.name === "addr");
-  if (!addr) return null;
-  const reg = addr.region ?? {};
-  const land = addr.land ?? {};
-  const parts = [reg.area2?.name, reg.area3?.name];
-  if (road) parts.splice(1, 1, land.name); // 도로명: 시군구 + 도로명
-  const num = [land.number1, land.number2].filter(Boolean).join("-");
-  const building = land.addition0?.value;
-  return [...parts.filter(Boolean), num, building].filter(Boolean).join(" ");
+  const body = await getJson<{ address: string | null }>("/reverse-geocode", { lng: String(lng), lat: String(lat) });
+  return body?.address ?? null;
 }
 
 /** 날씨 요약 (/api/weather, ADR-024). 필드는 02_api_spec.md 계약 그대로. */

@@ -1,13 +1,16 @@
-/** 네이버 지도 (ADR-002): 정류장 마커, 지도에서 출발지·도착지 고르기, 경로 표시 */
+/**
+ * 카카오맵 (ADR-044, 이전: 네이버 지도 ADR-002): 정류장 마커, 지도에서 출발지·도착지 고르기, 경로 표시.
+ * 카카오맵은 무료 쿼터를 넘으면 과금 없이 멈춘다(유료 API 를 켜지 않은 경우).
+ */
 import { config } from "./config";
 import type { BusDb, Station } from "./data";
-import { metersPerPixel, offsetRight } from "./offset";
+import { offsetRight } from "./offset";
 import type { Place } from "./places";
 import { esc } from "./util";
 
 declare global {
   interface Window {
-    naver?: any; // 네이버 지도 SDK는 공식 타입이 없어 any 로 둔다.
+    kakao?: any; // 카카오맵 SDK 는 공식 타입이 없어 any 로 둔다.
   }
 }
 
@@ -27,7 +30,17 @@ export interface MapView {
   destroy(): void;
 }
 
-const MARKER_MIN_ZOOM = 16;
+/**
+ * 카카오맵 확대 레벨: 1 이 가장 가깝고 숫자가 클수록 넓게 본다.
+ * 레벨 L 에서 1px ≈ 0.25 × 2^(L-1) m (레벨 3 ≈ 1m, 레벨 4 ≈ 2m).
+ */
+const START_LEVEL = 4;
+/** 이 레벨 이하(가까이)에서만 정류장 점을 그린다 */
+const MARKER_MAX_LEVEL = 4;
+/** 정류장을 눌러 이동할 때 레벨 */
+const FOCUS_LEVEL = 3;
+export const metersPerPixelAtLevel = (level: number) => 0.25 * 2 ** (level - 1);
+
 /** 노선 선 두께와, 도로 가운데에서 오른쪽으로 옮기는 거리(px) (ADR-037) */
 const LINE_WEIGHT = 5;
 const LANE_PX = 4;
@@ -40,64 +53,84 @@ export async function initMap(
   reverse: (lng: number, lat: number) => Promise<string | null>,
   signal?: AbortSignal,
 ): Promise<MapView | null> {
-  if (!config.naverMapClientId) {
-    el.textContent = "VITE_NAVER_MAP_CLIENT_ID 가 설정되지 않아 지도를 표시하지 않습니다.";
+  if (!config.kakaoMapKey) {
+    el.textContent = "VITE_KAKAO_MAP_KEY 가 설정되지 않아 지도를 표시하지 않습니다.";
     el.classList.add("map-missing");
     return null;
   }
   await loadSdk();
-  // SDK 를 기다리는 동안 컴포넌트가 사라졌으면 지도를 만들지 않는다.
-  // (만든 뒤 destroy 하면 같은 요소에 새로 만든 지도의 화면까지 지워진다 — React 개발 모드 이중 마운트)
+  // SDK 를 기다리는 동안 컴포넌트가 사라졌으면 지도를 만들지 않는다 (React 개발 모드 이중 마운트)
   if (signal?.aborted) return null;
-  const { naver } = window;
-  const map = new naver.maps.Map(el, {
-    center: new naver.maps.LatLng(config.initialCenter.lat, config.initialCenter.lng),
-    zoom: 16,
-    scaleControl: false,
-    mapDataControl: false,
-  });
-  // 레이아웃이 자리 잡기 전 크기로 지도가 만들어지면 가운데가 어긋나 팝업이 잘린다 → 실제 크기를 계속 알려 준다
-  const resize = new ResizeObserver(() => {
-    if (el.clientWidth && el.clientHeight) map.setSize(new naver.maps.Size(el.clientWidth, el.clientHeight));
-  });
+  const { kakao } = window;
+  const K = kakao.maps;
+  const ll = (lat: number, lng: number) => new K.LatLng(lat, lng);
+  const map = new K.Map(el, { center: ll(config.initialCenter.lat, config.initialCenter.lng), level: START_LEVEL });
+
+  // 이벤트는 정리할 수 있게 모아 둔다
+  const listeners: [any, string, (...a: any[]) => void][] = [];
+  const on = (target: any, type: string, fn: (...a: any[]) => void) => {
+    K.event.addListener(target, type, fn);
+    listeners.push([target, type, fn]);
+  };
+
+  // 레이아웃이 자리 잡기 전 크기로 지도가 만들어지면 가운데가 어긋난다 → 크기가 바뀌면 다시 맞춘다
+  const resize = new ResizeObserver(() => { if (el.clientWidth && el.clientHeight) map.relayout(); });
   resize.observe(el);
-  const info = new naver.maps.InfoWindow({ borderWidth: 0, backgroundColor: "transparent", disableAnchor: true, pixelOffset: new naver.maps.Point(0, -8) });
+
+  /** HTML 조각을 지도 위에 올린다 (카카오 CustomOverlay). 가운데 기준 */
+  const overlay = (lat: number, lng: number, content: HTMLElement | string, zIndex: number, yAnchor = 0.5) =>
+    new K.CustomOverlay({ position: ll(lat, lng), content, xAnchor: 0.5, yAnchor, zIndex, clickable: true, map });
+  const elFrom = (html: string) => {
+    const d = document.createElement("div");
+    d.innerHTML = html;
+    return d.firstElementChild as HTMLElement;
+  };
 
   // ---- 정류장 마커 (화면에 보이는 영역만) ----
   let stationMarkers: any[] = [];
   const renderStations = () => {
     stationMarkers.forEach((m) => m.setMap(null));
     stationMarkers = [];
-    if (map.getZoom() < MARKER_MIN_ZOOM) return;
+    if (map.getLevel() > MARKER_MAX_LEVEL) return;
     const b = map.getBounds();
-    const list = db.grid.inBounds(b.getMin().y, b.getMin().x, b.getMax().y, b.getMax().x, 300);
+    const sw = b.getSouthWest();
+    const ne = b.getNorthEast();
+    const list = db.grid.inBounds(sw.getLat(), sw.getLng(), ne.getLat(), ne.getLng(), 300);
     for (const s of list) {
-      const m = new naver.maps.Marker({
-        position: new naver.maps.LatLng(s.y, s.x),
-        map,
-        icon: { content: `<div class="stop-dot" title="${esc(s.name)}"></div>`, anchor: new naver.maps.Point(7, 7) },
-        zIndex: 10,
-      });
-      if (onPick) naver.maps.Event.addListener(m, "click", () => openPicker(s.y, s.x, `${s.name} (${s.no})`, describe(s), {
-        kind: "station", stationId: s.id, label: `${s.name} (${s.no})`, lat: s.y, lng: s.x,
-      }));
-      stationMarkers.push(m);
+      const dot = elFrom(`<div class="stop-dot" title="${esc(s.name)}"></div>`);
+      if (onPick) {
+        dot.style.cursor = "pointer";
+        dot.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openPicker(s.y, s.x, `${s.name} (${s.no})`, describe(s), {
+            kind: "station", stationId: s.id, label: `${s.name} (${s.no})`, lat: s.y, lng: s.x,
+          });
+        });
+      }
+      stationMarkers.push(overlay(s.y, s.x, dot, 10));
     }
   };
-  naver.maps.Event.addListener(map, "idle", renderStations);
+  on(map, "idle", renderStations);
   renderStations();
 
   // ---- 지도에서 고르기 ----
   /** 팝업을 닫거나 새로 열 때마다 올린다. 주소 확인이 늦게 끝나도 닫은 팝업을 다시 열지 않기 위함 */
   let pickerSeq = 0;
-  const closePicker = () => { pickerSeq++; info.close(); };
+  let picker: any = null;
+  const closePicker = () => { pickerSeq++; picker?.setMap(null); picker = null; };
 
   function openPicker(lat: number, lng: number, title: string, sub: string, place: Place) {
+    picker?.setMap(null);
+    const wrap = document.createElement("div");
+    wrap.className = "picker-wrap";
     const box = document.createElement("div");
     box.className = "picker";
     box.innerHTML = `<button type="button" class="picker-close" data-close aria-label="닫기">✕</button>
       <strong>${esc(title)}</strong>${sub ? `<small>${esc(sub)}</small>` : ""}
       <div class="picker-btns"><button type="button" data-role="from">출발</button><button type="button" data-role="to">도착</button></div>`;
+    wrap.appendChild(box);
+    // 팝업 안을 눌러도 지도 클릭(다른 곳 고르기)으로 넘어가지 않게
+    for (const t of ["mousedown", "touchstart", "click"]) wrap.addEventListener(t, (e) => e.stopPropagation());
     box.addEventListener("click", (e) => {
       const t = (e.target as HTMLElement).closest<HTMLElement>("button");
       if (!t) return;
@@ -106,17 +139,15 @@ export async function initMap(
       if (role) { closePicker(); onPick?.(place, role); }
     });
     box.addEventListener("keydown", (e) => { if (e.key === "Escape") closePicker(); });
-    info.setContent(box);
-    const pos = new naver.maps.LatLng(lat, lng);
     // 화면 가장자리에서 눌러도 팝업이 잘리지 않게: 누른 곳을 지도 가운데로, 팝업이 위로 열릴 자리를 조금 더 둔다
-    map.setCenter(pos);
-    map.panBy(new naver.maps.Point(0, -Math.min(60, el.clientHeight * 0.15)));
-    info.open(map, pos);
+    map.setCenter(ll(lat, lng));
+    map.panBy(0, -Math.min(60, el.clientHeight * 0.15));
+    picker = overlay(lat, lng, wrap, 400, 1);
   }
 
-  if (onPick) naver.maps.Event.addListener(map, "click", async (e: any) => {
-    const lat = e.coord.y;
-    const lng = e.coord.x;
+  if (onPick) on(map, "click", async (e: any) => {
+    const lat = e.latLng.getLat();
+    const lng = e.latLng.getLng();
     const seq = ++pickerSeq;
     openPicker(lat, lng, "주소 확인 중…", "", { kind: "point", label: "지도에서 선택한 위치", lat, lng });
     const addr = await reverse(lng, lat).catch(() => null);
@@ -131,16 +162,20 @@ export async function initMap(
   let busMarkers: any[] = [];
   let stopMarker: any = null;
 
-  // ---- 노선 선은 도로 오른쪽으로 (ADR-037) ----
-  // 버스는 오른쪽 차로로 다니므로 도로 가운데선을 진행 방향 오른쪽으로 LANE_PX 만큼 옮겨 그린다.
-  // 화면 픽셀 기준이라 확대 단계가 바뀌면 다시 계산한다.
+  // 노선 선은 도로 오른쪽으로 (ADR-037). 화면 픽셀 기준이라 확대 레벨이 바뀌면 다시 계산한다.
   let pathSegs: { coords: [number, number][]; color: string }[] = [];
-  const toLatLngs = (cs: [number, number][]) => cs.map(([lat, lng]) => new naver.maps.LatLng(lat, lng));
-  const laneOffset = () => LANE_PX * metersPerPixel(map.getCenter().y, map.getZoom());
-  naver.maps.Event.addListener(map, "zoom_changed", () => {
+  const toPath = (cs: [number, number][]) => cs.map(([lat, lng]) => ll(lat, lng));
+  const laneOffset = () => LANE_PX * metersPerPixelAtLevel(map.getLevel());
+  on(map, "zoom_changed", () => {
     const off = laneOffset();
-    lines.forEach((l, i) => { if (pathSegs[i]) l.setPath(toLatLngs(offsetRight(pathSegs[i].coords, off))); });
+    lines.forEach((l, i) => { if (pathSegs[i]) l.setPath(toPath(offsetRight(pathSegs[i].coords, off))); });
   });
+
+  const fitBounds = (pts: [number, number][], pad: number) => {
+    const b = new K.LatLngBounds();
+    for (const [lat, lng] of pts) b.extend(ll(lat, lng));
+    map.setBounds(b, pad, pad, pad, pad);
+  };
 
   return {
     setEndpoints(from, to) {
@@ -150,93 +185,70 @@ export async function initMap(
       const mark = (p: Place | null, def: string) => (p && p.kind === "point" && p.mine ? "나" : def);
       for (const [p, cls, text] of [[from, "from", mark(from, "출")], [to, "to", mark(to, "도")]] as const) {
         if (!p) continue;
-        endpointMarkers.push(new naver.maps.Marker({
-          position: new naver.maps.LatLng(p.lat, p.lng),
-          map,
-          icon: { content: `<div class="pin pin-${cls}">${text}</div>`, anchor: new naver.maps.Point(14, 14) },
-          zIndex: 100,
-        }));
+        endpointMarkers.push(overlay(p.lat, p.lng, `<div class="pin pin-${cls}">${text}</div>`, 100));
       }
-      if (from && to) {
-        const bounds = new naver.maps.LatLngBounds(
-          new naver.maps.LatLng(Math.min(from.lat, to.lat), Math.min(from.lng, to.lng)),
-          new naver.maps.LatLng(Math.max(from.lat, to.lat), Math.max(from.lng, to.lng)),
-        );
-        map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
-      } else if (from || to) {
+      if (from && to) fitBounds([[from.lat, from.lng], [to.lat, to.lng]], 40);
+      else if (from || to) {
         const p = (from ?? to)!;
-        map.panTo(new naver.maps.LatLng(p.lat, p.lng));
+        map.panTo(ll(p.lat, p.lng));
       }
     },
     showPath(segments) {
       lines.forEach((l) => l.setMap(null));
       pathSegs = segments;
       const off = laneOffset();
-      lines = segments.map((s) => new naver.maps.Polyline({
+      lines = segments.map((s) => new K.Polyline({
         map,
-        path: toLatLngs(offsetRight(s.coords, off)),
+        path: toPath(offsetRight(s.coords, off)),
         strokeColor: s.color,
         strokeWeight: LINE_WEIGHT,
         strokeOpacity: 0.85,
+        zIndex: 50,
       }));
     },
     showBuses(buses) {
       busMarkers.forEach((m) => m.setMap(null));
-      busMarkers = buses.map((b) => new naver.maps.Marker({
-        position: new naver.maps.LatLng(b.lat, b.lng),
-        map,
-        title: b.label,
-        icon: { content: `<div class="bus-marker" title="${esc(b.label)}">🚌</div>`, anchor: new naver.maps.Point(14, 14) },
-        zIndex: 200,
-      }));
+      busMarkers = buses.map((b) => overlay(b.lat, b.lng, `<div class="bus-marker" title="${esc(b.label)}">🚌</div>`, 200));
     },
     fitTo(coords) {
       if (coords.length < 2) return;
-      const ys = coords.map((c) => c[0]);
-      const xs = coords.map((c) => c[1]);
-      map.fitBounds(
-        new naver.maps.LatLngBounds(
-          new naver.maps.LatLng(Math.min(...ys), Math.min(...xs)),
-          new naver.maps.LatLng(Math.max(...ys), Math.max(...xs)),
-        ),
-        { top: 30, right: 30, bottom: 30, left: 30 },
-      );
+      fitBounds(coords, 30);
     },
     focus(lat, lng) {
-      map.panTo(new naver.maps.LatLng(lat, lng));
+      map.panTo(ll(lat, lng));
     },
     showStop(stop) {
       stopMarker?.setMap(null);
       stopMarker = null;
       if (!stop) return;
-      const pos = new naver.maps.LatLng(stop.lat, stop.lng);
-      stopMarker = new naver.maps.Marker({
-        position: pos,
-        map,
-        title: stop.label,
-        icon: { content: `<div class="stop-focus"><span>${esc(stop.label)}</span></div>`, anchor: new naver.maps.Point(10, 10) },
-        zIndex: 300,
-      });
-      if (map.getZoom() < 17) map.setZoom(17, false);
-      map.panTo(pos);
+      stopMarker = overlay(stop.lat, stop.lng, `<div class="stop-focus" title="${esc(stop.label)}"><span>${esc(stop.label)}</span></div>`, 300);
+      if (map.getLevel() > FOCUS_LEVEL) map.setLevel(FOCUS_LEVEL);
+      map.panTo(ll(stop.lat, stop.lng));
     },
     destroy() {
-      // SDK 내부 상태(인증 실패 등)에 따라 예외가 날 수 있어 각각 감싼다
+      // SDK 상태에 따라 예외가 날 수 있어 각각 감싼다
       const safe = (f: () => void) => { try { f(); } catch { /* 무시 */ } };
       safe(() => resize.disconnect());
-      safe(() => info.close());
+      safe(() => picker?.setMap(null));
+      for (const [t, type, fn] of listeners) safe(() => K.event.removeListener(t, type, fn));
       [...stationMarkers, ...endpointMarkers, ...lines, ...busMarkers, stopMarker].filter(Boolean).forEach((o) => safe(() => o.setMap(null)));
-      safe(() => map.destroy());
+      // 카카오맵은 destroy 가 없어 그린 내용을 비운다 (같은 요소에 새 지도를 만들 수 있게)
+      safe(() => { el.innerHTML = ""; });
     },
   };
 }
 
-/** SDK 스크립트는 모듈 단위 Promise 로 한 번만 불러온다 */
+/** SDK 스크립트는 모듈 단위 Promise 로 한 번만 불러온다. autoload=false 로 받고 kakao.maps.load 로 준비를 기다린다 */
 let sdk: Promise<void> | null = null;
 function loadSdk(): Promise<void> {
   sdk ??= loadScript(
-    `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(config.naverMapClientId!)}`,
-  ).catch((e) => { sdk = null; throw e; });
+    `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(config.kakaoMapKey!)}&autoload=false`,
+  )
+    .then(() => new Promise<void>((resolve, reject) => {
+      if (!window.kakao?.maps?.load) { reject(new Error("카카오맵 SDK 를 불러오지 못했습니다 (키·도메인 등록 확인)")); return; }
+      window.kakao.maps.load(() => resolve());
+    }))
+    .catch((e) => { sdk = null; throw e; });
   return sdk;
 }
 
@@ -245,7 +257,7 @@ function loadScript(src: string): Promise<void> {
     const s = document.createElement("script");
     s.src = src;
     s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`스크립트를 불러오지 못했습니다: ${src}`));
+    s.onerror = () => reject(new Error("카카오맵 스크립트를 불러오지 못했습니다"));
     document.head.appendChild(s);
   });
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Nav, SearchView } from "../App";
 import { ArrivalBoard } from "../components/features/ArrivalBoard";
-import { NaverMap } from "../components/features/NaverMap";
+import { BusMap } from "../components/features/BusMap";
 import type { PlaceInputHandle } from "../components/features/PlaceInput";
 import { RefreshStatus } from "../components/features/RefreshStatus";
 import { RouteOptionCard } from "../components/features/RouteOptionCard";
@@ -204,7 +204,7 @@ export function SearchScreen({ init, nav, active }: { init: SearchView; nav: Nav
       </div>
 
       <div className="split-map">
-        <NaverMap from={from} to={to} path={pathResult} onPick={onPickMap} className="map-search" />
+        <BusMap from={from} to={to} path={pathResult} onPick={onPickMap} className="map-search" />
       </div>
 
       <div className="split-body sheet">

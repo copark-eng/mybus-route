@@ -3,8 +3,8 @@
  * 정적 파일(web/dist)은 Workers Static Assets 가 응답하고, /api/* 만 이 코드가 처리한다.
  *
  *   GET /api/arrivals?stationId=206000004      경기도 버스도착정보 (30초 캐시, ADR-015·040)
- *   GET /api/geocode?query=성남시 분당구 ...      NCP Geocoding (ADR-013, ADR-019)
- *   GET /api/reverse-geocode?lng=127.1&lat=37.3  NCP Reverse Geocoding
+ *   GET /api/geocode?query=성남시 분당구 ...      카카오 로컬 주소 검색 (ADR-013, ADR-044)
+ *   GET /api/reverse-geocode?lng=127.1&lat=37.3  카카오 로컬 좌표→주소 → {address}
  *   GET /api/weather?lat=37.38&lng=127.12        기상청 단기예보 요약 (10분 캐시, 실패 60초, ADR-024)
  *   GET /api/bus-locations?routeId=241222005     노선의 운행 중 버스 위치 (15초 캐시, ADR-028)
  *
@@ -16,8 +16,8 @@ import { cacheGet, cachePut, json } from "./http";
 
 export interface Env {
   BUS_API_KEY: string;
-  NCP_KEY_ID: string;
-  NCP_KEY: string;
+  /** 카카오 REST API 키 (주소 검색, ADR-044). 서버에서만 쓴다 */
+  KAKAO_REST_KEY: string;
 }
 
 const UPSTREAM_TIMEOUT_MS = 6_000;
@@ -35,8 +35,8 @@ const dailyLimitResponse = () =>
     "Cache-Control": `public, max-age=${DAILY_LIMIT_TTL_SEC}`,
   });
 const ARRIVAL_URL ="https://apis.data.go.kr/6410000/busarrivalservice/v2/getBusArrivalListv2";
-const GEOCODE_URL = "https://maps.apigw.ntruss.com/map-geocode/v2/geocode";
-const REVERSE_GEOCODE_URL = "https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc";
+const GEOCODE_URL = "https://dapi.kakao.com/v2/local/search/address.json";
+const REVERSE_GEOCODE_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json";
 /** 도착정보 공유 캐시 (ADR-040: 20 → 30초). 캐시 나이는 X-Data-Age 로 알려 화면이 남은 시간을 맞춘다 */
 const ARRIVAL_TTL_SEC = 30;
 
@@ -165,10 +165,10 @@ async function arrivals(url: URL, env: Env, ctx: ExecutionContext): Promise<Resp
   return out;
 }
 
-// ---------- NCP Geocoding ----------
+// ---------- 카카오 로컬 (주소 검색, ADR-044) ----------
 
-function ncpHeaders(env: Env): HeadersInit {
-  return { "x-ncp-apigw-api-key-id": env.NCP_KEY_ID, "x-ncp-apigw-api-key": env.NCP_KEY };
+function kakaoHeaders(env: Env): HeadersInit {
+  return { Authorization: `KakaoAK ${(env.KAKAO_REST_KEY ?? "").trim()}` };
 }
 
 async function geocode(url: URL, env: Env): Promise<Response> {
@@ -177,15 +177,16 @@ async function geocode(url: URL, env: Env): Promise<Response> {
   if (query.length > 100) return json({ error: "query 는 100글자 이하" }, 400);
   const upstream = new URL(GEOCODE_URL);
   upstream.searchParams.set("query", query);
-  const res = await fetch(upstream, { headers: ncpHeaders(env) });
+  upstream.searchParams.set("size", "10");
+  const res = await fetch(upstream, { headers: kakaoHeaders(env), signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
   if (!res.ok) return json({ error: `geocode ${res.status}`, detail: await upstreamDetail(res) }, 502);
   const body = (await res.json()) as any;
   return json(
-    toList(body?.addresses).map((a) => ({
-      roadAddress: str(a.roadAddress),
-      jibunAddress: str(a.jibunAddress),
-      lng: Number(a.x),
-      lat: Number(a.y),
+    toList(body?.documents).map((d) => ({
+      roadAddress: str(d.road_address?.address_name),
+      jibunAddress: str(d.address?.address_name) ?? str(d.address_name),
+      lng: Number(d.x),
+      lat: Number(d.y),
     })),
   );
 }
@@ -196,12 +197,37 @@ async function reverseGeocode(url: URL, env: Env): Promise<Response> {
   const lat = toNum(url.searchParams.get("lat"));
   if (lng === null || lat === null) return json({ error: "lng, lat 이 필요합니다" }, 400);
   const upstream = new URL(REVERSE_GEOCODE_URL);
-  upstream.searchParams.set("coords", `${lng},${lat}`);
-  upstream.searchParams.set("orders", "roadaddr,addr");
-  upstream.searchParams.set("output", "json");
-  const res = await fetch(upstream, { headers: ncpHeaders(env) });
+  upstream.searchParams.set("x", String(lng));
+  upstream.searchParams.set("y", String(lat));
+  const res = await fetch(upstream, { headers: kakaoHeaders(env), signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
   if (!res.ok) return json({ error: `reverse-geocode ${res.status}`, detail: await upstreamDetail(res) }, 502);
-  return json(await res.json());
+  const body = (await res.json()) as any;
+  return json({ address: shortAddress(toList(body?.documents)[0]) });
+}
+
+/**
+ * 좌표→주소 결과를 한 줄로: 도로명이면 "분당구 판교역로 166 (건물명)", 없으면 지번 "분당구 백현동 532".
+ * 시·도(경기)와 시(성남시)는 빼고 구·동부터 보여 준다 (화면 폭이 좁아서). 구가 없는 시는 시부터.
+ */
+export function shortAddress(doc: any): string | null {
+  if (!doc) return null;
+  const r = doc.road_address;
+  const a = doc.address;
+  const area = (x: any) => {
+    const two = String(x?.region_2depth_name ?? "").trim(); // "성남시 분당구" 또는 "과천시"
+    const parts = two.split(/\s+/).filter(Boolean);
+    return parts.length > 1 ? parts.slice(1).join(" ") : parts[0] ?? "";
+  };
+  if (r?.road_name) {
+    const no = [r.main_building_no, r.sub_building_no].filter((v: any) => v && v !== "0").join("-");
+    const building = str(r.building_name);
+    return [area(r), r.road_name, no].filter(Boolean).join(" ") + (building ? ` (${building})` : "");
+  }
+  if (a) {
+    const no = [a.main_address_no, a.sub_address_no].filter((v: any) => v && v !== "0").join("-");
+    return [area(a), a.region_3depth_name, no].filter(Boolean).join(" ") || str(a.address_name);
+  }
+  return null;
 }
 
 // ---------- 유틸 ----------

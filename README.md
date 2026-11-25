@@ -10,8 +10,8 @@
 웹 화면과 API 를 Cloudflare Worker 하나로 배포합니다 ([ADR-020](doc/adr.md#adr-020)).
 서비스 주소: https://mybus-route.copark-ai.workers.dev
 ```
-web/      프런트엔드 (TypeScript + Vite, 네이버 지도) → 빌드 결과 web/dist
-worker/   Cloudflare Worker: web/dist 정적 파일 + /api/* (data.go.kr, NCP Geocoding)
+web/      프런트엔드 (TypeScript + Vite, 카카오맵) → 빌드 결과 web/dist
+worker/   Cloudflare Worker: web/dist 정적 파일 + /api/* (data.go.kr, 카카오 로컬)
 doc/      요구사항, ADR
 ```
 
@@ -29,7 +29,7 @@ npm run dev:worker                             # http://localhost:8787
 
 웹 (터미널 2):
 ```
-cp web/.env.example web/.env                   # NCP Client ID 입력
+cp web/.env.example web/.env                   # 카카오 JavaScript 키 입력
 npm run dev:web                                # http://localhost:5173  (/api 는 8787 로 전달)
 ```
 
@@ -47,8 +47,7 @@ npm run build:db      # worker/.dev.vars 의 BUS_API_KEY 사용 → web/public/d
 cd worker
 npx wrangler login
 npx wrangler secret put BUS_API_KEY
-npx wrangler secret put NCP_KEY_ID
-npx wrangler secret put NCP_KEY
+npx wrangler secret put KAKAO_REST_KEY
 ```
 
 ### 방법 1: 직접 배포
@@ -61,10 +60,11 @@ Cloudflare 대시보드 → Workers & Pages → `mybus-route` → Settings → B
 - Root directory: `/`
 - Build command: `npm ci && npm run build -w web`
 - Deploy command: `npx wrangler deploy --config worker/wrangler.toml`
-- Build variables: `VITE_NAVER_MAP_CLIENT_ID`
+- Build variables: `VITE_KAKAO_MAP_KEY`
 
 ## 준비할 계정·API
 - data.go.kr (같은 키): 경기도_버스도착정보 조회, 경기도_버스기반정보 조회, 기상청_단기예보 조회서비스 (정류소·버스노선 조회는 이전 수집 방식용)
-- 네이버 클라우드 플랫폼: Maps 애플리케이션 (Dynamic Map, Geocoding, Reverse Geocoding)
-  - 서비스 URL: Worker 주소(`https://mybus-route.<서브도메인>.workers.dev`), `http://localhost:5173`
+- 카카오 개발자센터 앱 (ADR-044): JavaScript 키(지도) + REST API 키(로컬 주소 검색)
+  - [제품 설정] → 카카오맵 사용 설정 ON, 유료 API 는 켜지 않는다 (쿼터를 넘으면 과금 없이 멈춤)
+  - [플랫폼] → Web 도메인: Worker 주소(`https://mybus-route.<서브도메인>.workers.dev`), `http://localhost:5173`
 - Cloudflare 계정 (Workers 무료 플랜)
