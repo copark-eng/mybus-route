@@ -1,6 +1,9 @@
 /* 카카오맵 위에 그리는 마커·팝업 (lib/map.ts 가 만드는 DOM, ADR-044) */
 /* 팝업은 누른 지점 위로 열린다 (아래 여백 = 지점과 팝업 사이 간격) */
 .picker-wrap { padding-bottom: 12px; }
+/* 카카오 CustomOverlay 는 줄바꿈을 막아 긴 주소가 화면 밖으로 나간다 → 팝업 안에서는 줄바꿈 */
+.picker-wrap, .picker-wrap * { white-space: normal; }
+.picker-wrap .picker { width: max-content; max-width: min(260px, calc(100vw - 48px)); overflow-wrap: anywhere; }
 .stop-dot {
   width: 14px; height: 14px; border-radius: 50%;
   background: #fff; border: 3px solid var(--accent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);

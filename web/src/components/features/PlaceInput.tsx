@@ -60,7 +60,7 @@ export const PlaceInput = forwardRef<PlaceInputHandle, {
         const found = await geocode(q).catch(() => []);
         if (latestQuery.current !== q) return;
         const addr = found.slice(0, 4).map<Suggest>((a) => ({
-          place: { kind: "point", label: (a.roadAddress ?? a.jibunAddress ?? q).replace(/^경기도\s*/, ""), lat: a.lat, lng: a.lng },
+          place: { kind: "point", label: (a.roadAddress ?? a.jibunAddress ?? q).replace(/^경기(도)?\s+/, "") /* 카카오는 "경기", 네이버는 "경기도" */, lat: a.lat, lng: a.lng },
           hint: "",
         }));
         setItems([...base, ...addr]);
